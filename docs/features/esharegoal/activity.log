@@ -1,0 +1,15 @@
+2026-10-25 | orchestrator | flow started (mode: hybrid, design: pending choice)
+2026-10-25 | orchestrator | design source: frontend; frontend-dev design started
+2026-10-26 | orchestrator | design revision: dashboard screen (accordion per joined group with your activity summary)
+2026-10-26 | orchestrator | design revision: dashboard v2 (groups > goals nested accordions, per-goal mini dashboard)
+2026-10-26 | orchestrator | design revision: preview bar removed; All Goals screen with joined indicator
+2026-10-26 | orchestrator | design revision: goal info page for non-joined goals
+2026-10-26 | orchestrator | fix: group overview per group (?group=), Friends no longer shows Family
+2026-10-26 | orchestrator | decision: roles Owner/Member + System Admin viewer; View as switch and role indicator added
+2026-10-26 | orchestrator | focus: admin side first; preview default role System Admin
+2026-10-26 | orchestrator | admin: My Groups hidden, /groups redirects to dashboard
+2026-10-26 | orchestrator | activity history: admin sees all groups, owner/member only joined goals
+2026-10-26 | orchestrator | activity history: group/goal accordions, per-section paging, member filter real users only
+2026-10-26 | orchestrator | activity history: group > goal accordions, filters per goal
+2026-10-26 | orchestrator | sections by role: owner notifications/integrations/jobs, admin users; integrations moved out of settings
+2026-10-26 | orchestrator | admin: id review sign-up, revoke + transfer ownership, reports inbox, email delivery mode
