@@ -3,7 +3,7 @@
 import { OwnerOnly, useViewAs } from "@/components/app/view-as";
 import { useState } from "react";
 import { toast } from "sonner";
-import { Check, Pencil, Plus, X } from "lucide-react";
+import { Check, ImageUp, Pencil, Plus, Trash2, X } from "lucide-react";
 import { StatusBadge, toneText } from "@/components/app/primitives";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -13,21 +13,29 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { TransactionForm } from "./transaction-form";
-import { byMember, candidates, members, type CandStatus, type Candidate } from "@/lib/demo-data";
+import { candidates, members, type CandStatus, type Candidate, type Tx } from "@/lib/demo-data";
+import { useCarCredit, useCarCreditEditor } from "@/components/app/car-credit";
+import { newRecordId, readRecords, writeRecords, type TxPatch } from "@/components/app/records";
+import { saveReviewItems, useReviewItems, type ReviewItem } from "@/components/app/import-store";
 import { fmtDate, peso } from "@/lib/money";
 import { cn } from "@/lib/utils";
 
-export function AddTransactionDialog({ label = "Add transaction" }: { label?: string }) {
+// Owners add transactions directly. Members submit theirs with a receipt for the Owner to approve. The System Admin only views.
+// goalId: the sample goal the transaction is saved to. memberId: who it is for, when opened from a member's row.
+export function AddTransactionDialog({ label = "Add transaction", goalId, memberId }: { label?: string; goalId: string; memberId?: string }) {
   const [open, setOpen] = useState(false);
+  const role = useViewAs();
+  if (role === "admin") return null;
+  const submit = role === "member";
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger render={<Button />}><Plus aria-hidden /> {label}</DialogTrigger>
+      <DialogTrigger render={<Button />}>{submit ? <><ImageUp aria-hidden /> Submit a transaction</> : <><Plus aria-hidden /> {label}</>}</DialogTrigger>
       <DialogContent className="sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle>Add transaction</DialogTitle>
-          <DialogDescription>Totals update as soon as you save. Confirmed records can later be corrected, never silently overwritten.</DialogDescription>
+          <DialogTitle>{submit ? "Submit a transaction" : "Add transaction"}</DialogTitle>
+          <DialogDescription>{submit ? "Attach the receipt. The group Owner checks it, and it counts once they approve it." : "It is saved as confirmed and shows in Transactions right away. Records can later be corrected, never silently overwritten."}</DialogDescription>
         </DialogHeader>
-        <TransactionForm onDone={() => setOpen(false)} />
+        <TransactionForm goalId={goalId} submit={submit} memberId={memberId} onDone={() => setOpen(false)} />
       </DialogContent>
     </Dialog>
   );
@@ -37,6 +45,8 @@ const typeLabel = { deposit: "Deposit", loan_payment: "Loan payment", expense: "
 
 /** One accordion row per member; expanding shows that member's transactions. */
 export function MemberContributions() {
+  const { byMember } = useCarCredit();
+  const { save, remove } = useCarCreditEditor();
   return (
     <Accordion className="rounded-xl border">
       <div className="hidden grid-cols-[1.4fr_1fr_.6fr_1fr_2rem] gap-3 border-b bg-muted/50 px-4 py-2 text-xs font-medium text-muted-foreground sm:grid" aria-hidden>
@@ -60,17 +70,17 @@ export function MemberContributions() {
                   <span className="text-muted-foreground">{fmtDate(t.date)}</span>
                   <span className="min-w-0">
                     <span className="font-medium">{typeLabel[t.type]}</span> · {t.method}{t.ref && <> · <span className="font-mono text-xs">{t.ref}</span></>}
-                    <span className="block truncate text-xs text-muted-foreground">{t.notes} · {t.source === "imported" ? "Imported" : "Manual"}</span>
+                    <span className="block truncate text-xs text-muted-foreground">{t.notes} · {t.source === "imported" ? "Imported" : t.source === "submission" ? "Member submission" : "Manual"}</span>
                   </span>
                   <span className="flex items-center gap-2 sm:justify-end">
                     <span className={cn("num font-medium", t.type === "deposit" ? toneText.success : toneText.danger)}>{t.type === "deposit" ? "+" : "-"}{peso(t.amount)}</span>
                     <StatusBadge status={t.status} />
-                    <OwnerOnly><Button variant="ghost" size="icon-sm" aria-label={`Correct transaction ${t.ref ?? t.id}`}><Pencil aria-hidden /></Button></OwnerOnly>
+                    <OwnerOnly><EditTxDialog tx={t} save={save} /><DeleteTxDialog tx={t} remove={remove} /></OwnerOnly>
                   </span>
                 </li>
               ))}
             </ul>
-            <OwnerOnly><div className="mt-2 flex justify-end"><AddTransactionDialog label={`Add for ${b.member.name}`} /></div></OwnerOnly>
+            <OwnerOnly><div className="mt-2 flex justify-end"><AddTransactionDialog goalId="car-credit" memberId={b.member.id} label={`Add for ${b.member.name}`} /></div></OwnerOnly>
           </AccordionContent>
         </AccordionItem>
       ))}
@@ -78,7 +88,89 @@ export function MemberContributions() {
   );
 }
 
-/** Review queue. Confirm / reject / correct are local state here; the real app writes a record and an audit row. */
+const txName = (t: Tx) => `${typeLabel[t.type].toLowerCase()} of ${peso(t.amount)} on ${fmtDate(t.date)}`;
+
+function EditTxDialog({ tx, save }: { tx: Tx; save: (id: string, p: TxPatch) => boolean }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger render={<Button variant="ghost" size="icon-sm" aria-label={`Edit ${txName(tx)}`} />}><Pencil aria-hidden /></DialogTrigger>
+      <DialogContent className="sm:max-w-xl">
+        <DialogHeader><DialogTitle>Edit transaction</DialogTitle><DialogDescription>Fix a wrong amount, date, member or type. Totals and shares update right away.</DialogDescription></DialogHeader>
+        {open && <TransactionForm goalId="car-credit" edit={{ tx, save: (p) => save(tx.id, p) }} onDone={() => setOpen(false)} />}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function DeleteTxDialog({ tx, remove }: { tx: Tx; remove: (id: string) => boolean }) {
+  const [open, setOpen] = useState(false);
+  const del = () => {
+    if (!remove(tx.id)) return void toast.error("Could not delete. This browser's storage is full or blocked (private mode), and nothing was changed.");
+    toast.success("Transaction deleted");
+    setOpen(false);
+  };
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger render={<Button variant="ghost" size="icon-sm" className="text-destructive hover:bg-destructive/10 hover:text-destructive" aria-label={`Delete ${txName(tx)}`} />}><Trash2 aria-hidden /></DialogTrigger>
+      <DialogContent>
+        <DialogHeader><DialogTitle>Delete this transaction?</DialogTitle><DialogDescription>The {txName(tx)} is removed and no longer counts toward totals or shares.</DialogDescription></DialogHeader>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+          <Button variant="destructive" onClick={del}><Trash2 aria-hidden /> Delete</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** Payments a Gmail import job sent here (Run now). Confirming one adds a record to its goal, so totals change for real. */
+function JobReviewItems({ canReview }: { canReview: boolean }) {
+  const items = useReviewItems();
+  const set = (id: string, patch: Partial<ReviewItem>) => saveReviewItems(items.map((x) => (x.id === id ? { ...x, ...patch } : x))) || (toast.error("Could not save. This browser's storage is full or blocked."), false);
+  const confirm = (r: ReviewItem) => {
+    const recordId = newRecordId();
+    const rec = { id: recordId, member: r.member, date: r.date, note: `Gmail import · ${r.ref}`, ref: r.ref, amount: r.amount, direction: "in" as const, kind: "deposit" as const, method: "Bank transfer" };
+    if (!writeRecords(r.goalId, [rec, ...readRecords(r.goalId)])) return void toast.error("Could not save. This browser's storage is full or blocked.");
+    if (set(r.id, { status: "Confirmed", recordId })) toast.success(`Confirmed: ${peso(r.amount)} from ${r.member} added to ${r.goal}`);
+  };
+  if (!items.length) return null;
+  return (
+    <section className="space-y-3">
+      <h2 className="text-sm font-medium">From your import jobs <span className="font-normal text-muted-foreground">· {items.filter((r) => r.status === "Pending Review").length} waiting</span></h2>
+      <ul className="space-y-3">{items.map((r) => {
+        const open = r.status === "Pending Review";
+        return (
+          <li key={r.id} className={cn("rounded-xl border bg-card p-4", open && !r.member && "border-warning/50")}>
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div>
+                <p className="num text-lg font-semibold">{peso(r.amount)}</p>
+                <p className="text-xs text-muted-foreground">{fmtDate(r.date)} · Ref {r.ref} · Payer {r.payer || "unknown"} · <span className="font-mono">{r.msg}</span></p>
+              </div>
+              <StatusBadge status={r.status} />
+            </div>
+            <dl className="mt-3 grid gap-x-6 gap-y-1 text-sm sm:grid-cols-3">
+              <div><dt className="text-xs text-muted-foreground">Member</dt><dd className={cn("font-medium", !r.member && toneText.warning)}>{r.member || "No payer rule matched"}</dd></div>
+              <div><dt className="text-xs text-muted-foreground">Goal</dt><dd className="font-medium">{r.goal}</dd></div>
+              <div><dt className="text-xs text-muted-foreground">Found by</dt><dd className="font-medium">{r.job}</dd></div>
+            </dl>
+            {open && canReview && (
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Button size="sm" disabled={!r.member} onClick={() => confirm(r)}><Check aria-hidden /> Confirm</Button>
+                <Button size="sm" variant="outline" onClick={() => set(r.id, { status: "Rejected" }) && toast("Rejected. No record created.")}><X aria-hidden /> Reject</Button>
+                <CorrectDialog c={{ id: r.id, ref: r.ref }} onSave={(m) => set(r.id, { member: m }) && toast.success("Member set. You can confirm now.")} />
+                {!r.member && <span className="self-center text-xs text-warning">Choose a member before confirming, or add a payer rule to the job.</span>}
+              </div>
+            )}
+          </li>
+        );
+      })}</ul>
+      <h2 className="pt-2 text-sm font-medium">Sample candidates</h2>
+    </section>
+  );
+}
+
+/** Review queue: what import jobs sent (saved), then the fictional sample candidates (local state only). */
 export function ImportQueue({ mode = "default" }: { mode?: "default" | "empty" }) {
   const canReview = useViewAs() === "owner";
   const [rows, setRows] = useState<Candidate[]>(mode === "empty" ? [] : candidates);
@@ -87,8 +179,14 @@ export function ImportQueue({ mode = "default" }: { mode?: "default" | "empty" }
     set(c.id, { status });
     toast(status === "Confirmed" ? "Confirmed. Dashboard totals would update now." : "Rejected. No record created.");
   };
-  if (!rows.length) return <p className="py-8 text-center text-sm text-muted-foreground">No candidates to review.</p>;
+  const count = (s: CandStatus) => rows.filter((c) => c.status === s).length;
+  if (!rows.length) return <><JobReviewItems canReview={canReview} /><p className="py-8 text-center text-sm text-muted-foreground">No sample candidates to review.</p></>;
   return (
+    <>
+    <JobReviewItems canReview={canReview} />
+    <div className="flex flex-wrap gap-2 text-sm">
+      <Badge variant="secondary" className="bg-warning-soft text-warning">{count("Pending Review")} pending review</Badge><Badge variant="secondary">{count("Duplicate")} duplicate</Badge><Badge variant="secondary">{count("Confirmed")} confirmed</Badge><Badge variant="secondary" className="bg-destructive-soft text-destructive">{count("Error")} error</Badge>
+    </div>
     <ul className="space-y-3">
       {rows.map((c) => {
         const open = c.status === "Pending Review" || c.status === "Detected";
@@ -119,10 +217,11 @@ export function ImportQueue({ mode = "default" }: { mode?: "default" | "empty" }
         );
       })}
     </ul>
+    </>
   );
 }
 
-function CorrectDialog({ c, onSave }: { c: Candidate; onSave: (member: string) => void }) {
+function CorrectDialog({ c, onSave }: { c: Pick<Candidate, "id" | "ref">; onSave: (member: string) => void }) {
   const [open, setOpen] = useState(false);
   const [m, setM] = useState("");
   return (

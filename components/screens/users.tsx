@@ -188,7 +188,7 @@ export function UsersScreen({ rows: initial }: { rows: Row[] }) {
 
       {/* ---------- User details ---------- */}
       <Sheet open={open !== null} onOpenChange={(o) => !o && setOpenId(null)}>
-        <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-lg">
+        <SheetContent side="right" className="overflow-y-auto data-[side=right]:w-full data-[side=right]:sm:max-w-lg">
           {open && <>
             <SheetHeader>
               <SheetTitle className="flex flex-wrap items-center gap-2">{open.name}<StatusBadge status={open.status} /></SheetTitle>

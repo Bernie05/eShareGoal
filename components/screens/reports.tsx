@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { CheckCheck, ChevronLeft, ChevronRight, Eye, Play, RotateCcw, Search, X } from "lucide-react";
+import { CheckCheck, ChevronLeft, ChevronRight, Eye, Hammer, Play, RotateCcw, Search, X } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -12,7 +12,8 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { PageHeader, StatCard, StatusBadge, toneText } from "@/components/app/primitives";
-import { useSendEmail } from "@/components/app/view-as";
+import { useSendEmail, writeCookie } from "@/components/app/view-as";
+import { GOAL_REQUESTS_COOKIE, type GoalRequest } from "@/lib/goal-requests";
 import { reports as initial, type Report, type ReportStatus } from "@/lib/reports-data";
 import { cn } from "@/lib/utils";
 
@@ -21,9 +22,16 @@ const empty = { q: "", type: "", status: "", priority: "" };
 const now = "Oct 26, 9:45 AM";
 const priorityTone = { High: toneText.danger, Medium: toneText.warning, Low: "text-muted-foreground" } as const;
 
+// Owners' "Request a goal type" requests, as report rows. Built = Resolved, Rejected = Dismissed.
+const fromRequest = (r: GoalRequest): Report => ({
+  id: r.id, type: "Goal request", title: `New goal type: ${r.name}`, body: r.what, by: r.by, group: r.group, about: {}, priority: "Low",
+  status: r.status === "Built" ? "Resolved" : r.status === "Rejected" ? "Dismissed" : "Open", created: r.created,
+  timeline: [`${r.created} · Requested by ${r.by}`, ...(r.note ? [`${r.status === "Built" ? "Built" : "Rejected"} by System Admin: ${r.note}`] : [])],
+});
+
 // ---------- Reports: System Admin only. Everything reported by users or found by the system, in one inbox ----------
-export function ReportsScreen() {
-  const [rows, setRows] = useState(initial);
+export function ReportsScreen({ requests }: { requests: GoalRequest[] }) {
+  const [rows, setRows] = useState(() => [...requests.map(fromRequest), ...initial]);
   const [f, setF] = useState(empty);
   const [page, setPage] = useState(0);
   const [openId, setOpenId] = useState<string | null>(null);
@@ -34,6 +42,8 @@ export function ReportsScreen() {
 
   const move = (r: Report, status: ReportStatus, verb: string) => {
     const line = `${now} · ${verb} by System Admin${note.trim() ? `: ${note.trim()}` : ""}`;
+    // Goal requests are kept in a cookie so the Owner sees the answer in Create goal.
+    if (r.type === "Goal request" && !writeCookie(GOAL_REQUESTS_COOKIE, requests.map((q) => (q.id === r.id ? { ...q, status: status === "Dismissed" ? "Rejected" : "Open", note: status === "Dismissed" ? note.trim() : undefined } : q)))) return;
     setRows((rs) => rs.map((x) => (x.id === r.id ? { ...x, status, timeline: [...x.timeline, line] } : x)));
     if (r.by !== "System" && (status === "Resolved" || status === "Dismissed")) send(`${r.by.toLowerCase().split(" ")[0]}@example.com`, `Your report ${r.id} was ${status.toLowerCase()}`);
     setNote("");
@@ -65,7 +75,7 @@ export function ReportsScreen() {
       <Card><CardContent className="space-y-3">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
           <div className="space-y-1.5 sm:col-span-2"><Label htmlFor="r-q">Search</Label><div className="relative"><Search className="absolute top-2 left-2.5 size-4 text-muted-foreground" aria-hidden /><Input id="r-q" value={f.q} onChange={(e) => set({ q: e.target.value })} placeholder="Report ID, title, person, reference…" className="pl-8" /></div></div>
-          {sel("type", "Type", ["Issue", "User report", "Payment dispute", "Sign-up flag", "System"], "All types")}
+          {sel("type", "Type", ["Issue", "User report", "Payment dispute", "Sign-up flag", "Goal request", "System"], "All types")}
           {sel("status", "Status", ["Open", "In review", "Resolved", "Dismissed"], "All statuses")}
           {sel("priority", "Priority", ["High", "Medium", "Low"], "All priorities")}
         </div>
@@ -101,7 +111,7 @@ export function ReportsScreen() {
       </CardContent></Card>
 
       <Sheet open={open !== null} onOpenChange={(o) => { if (!o) { setOpenId(null); setNote(""); } }}>
-        <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-lg">
+        <SheetContent side="right" className="overflow-y-auto data-[side=right]:w-full data-[side=right]:sm:max-w-lg">
           {open && <>
             <SheetHeader>
               <SheetTitle className="flex flex-wrap items-center gap-2"><span className="font-mono text-sm text-muted-foreground">{open.id}</span>{open.title}</SheetTitle>
@@ -125,10 +135,13 @@ export function ReportsScreen() {
                 <Textarea id="r-note" rows={3} value={note} onChange={(e) => setNote(e.target.value)} placeholder="What you found or did…" />
                 <div className="flex flex-wrap gap-2">
                   {open.status === "Open" && <Button variant="outline" onClick={() => move(open, "In review", "Review started")}><Play aria-hidden /> Start review</Button>}
-                  {(open.status === "Open" || open.status === "In review") && <>
+                  {(open.status === "Open" || open.status === "In review") && (open.type === "Goal request" ? <>
+                    <Link href={`/design-preview/templates?request=${open.id}`} className={buttonVariants()}><Hammer aria-hidden /> Build a template</Link>
+                    <Button variant="ghost" disabled={!note.trim()} onClick={() => move(open, "Dismissed", "Rejected")}><X aria-hidden /> Reject</Button>
+                  </> : <>
                     <Button disabled={!note.trim()} onClick={() => move(open, "Resolved", "Resolved")}><CheckCheck aria-hidden /> Resolve</Button>
                     <Button variant="ghost" disabled={!note.trim()} onClick={() => move(open, "Dismissed", "Dismissed")}><X aria-hidden /> Dismiss</Button>
-                  </>}
+                  </>)}
                   {(open.status === "Resolved" || open.status === "Dismissed") && <Button variant="outline" onClick={() => move(open, "Open", "Reopened")}><RotateCcw aria-hidden /> Reopen</Button>}
                 </div>
                 {(open.status === "Open" || open.status === "In review") && <p className="text-xs text-muted-foreground">Resolve and Dismiss need a note so the reporter knows what happened.</p>}

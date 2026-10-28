@@ -13,3 +13,19 @@
 2026-10-26 | orchestrator | activity history: group > goal accordions, filters per goal
 2026-10-26 | orchestrator | sections by role: owner notifications/integrations/jobs, admin users; integrations moved out of settings
 2026-10-26 | orchestrator | admin: id review sign-up, revoke + transfer ownership, reports inbox, email delivery mode
+2026-10-26 | orchestrator | fix: shared-money page per goal (?goal=), grocery budget renders
+2026-10-26 | orchestrator | create group: creator becomes owner (roles per group)
+2026-10-26 | orchestrator | admin goal templates with dashboard sections; create goal picks them
+2026-10-26 | orchestrator | create goal saves + goal dashboard from template; group funds removed; responsive sweep passed
+2026-10-26 | orchestrator | owner CRUD on records/goals/groups; creator can promote members to owner
+2026-10-26 | orchestrator | created groups unified with sample groups on all screens
+2026-10-26 | orchestrator | goal scope: single shared vs each member own target
+2026-10-26 | orchestrator | walking club demo with 4 dummy members
+2026-10-26 | orchestrator | walking demo auto-loads; admin sees created groups read-only
+2026-10-26 | orchestrator | goal types: locked/suggested fields, fixed scope, availability, retire, request a goal type; View as User 1/User 2/Admin
+2026-10-26 | orchestrator | roles per group: accounts Admin/User 1 (Bernz)/User 2 (Babylyn); Owner/Member decided per group
+2026-10-26 | orchestrator | integrations, scheduled jobs, notifications moved into per-group Group settings
+2026-10-26 | orchestrator | group setup moved onto the group page only (no separate settings page or sidebar link)
+2026-10-26 | orchestrator | group setup accordion: whole group + one row per goal (sub group)
+2026-10-27 | orchestrator | removed whole-group setup row; setup is per goal only
+2026-10-27 | orchestrator | gmail import per goal: test connection, help, filter, JSON, member map, add deposits; removed Change role

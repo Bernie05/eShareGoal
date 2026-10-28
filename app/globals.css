@@ -101,6 +101,7 @@
 }
 
 .dark {
+  color-scheme: dark; /* native dropdown lists, date pickers and scrollbars follow the theme */
   --background: oklch(0.17 0.015 265);
   --foreground: oklch(0.95 0.005 260);
   --card: oklch(0.21 0.017 265);

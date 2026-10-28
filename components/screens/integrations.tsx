@@ -1,87 +1,53 @@
 "use client";
 
-import Link from "next/link";
 import { toast } from "sonner";
-import { CalendarDays, FileSpreadsheet, Info, Mail } from "lucide-react";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { CalendarDays, ChevronDown, FileSpreadsheet, Mail } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Button, buttonVariants } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { NativeSelect } from "@/components/ui/native-select";
-import { PageHeader, StatusBadge } from "@/components/app/primitives";
-import { Row, save, Section } from "./settings";
+import { Button } from "@/components/ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { StatusBadge } from "@/components/app/primitives";
+import { mailboxFor, SERVICES, type ServiceId, type SetupSettings } from "@/lib/group-settings";
+import { GmailSetup } from "./gmail-setup";
 
-const base = "/design-preview";
-const notReal = () => toast("Preview only: a real connection needs Google sign-in (OAuth) and a backend.");
+const icons: Record<ServiceId, typeof Mail> = { gmail: Mail, calendar: CalendarDays, sheets: FileSpreadsheet };
 
-// Google services an Owner can connect. Only Gmail exists in v1 (simulated); the others show where they will plug in.
-const services = [
-  { id: "gmail", Icon: Mail, name: "Gmail", what: "Finds bank notification emails and proposes transactions for you to confirm.", connected: true },
-  { id: "calendar", Icon: CalendarDays, name: "Google Calendar", what: "Adds installment due dates and goal deadlines to your calendar.", connected: false },
-  { id: "sheets", Icon: FileSpreadsheet, name: "Google Sheets", what: "Copies a goal's records to a sheet you own, updated daily.", connected: false },
-];
-
-// ---------- Integrations: Owner only (the route sends other roles to the Dashboard) ----------
-export function IntegrationsScreen() {
+// ---------- Integrations of one goal. Owners connect and disconnect; the System Admin only views ----------
+// entryKey: "family~car-credit"; it also keeps field ids unique when several goals are open. Only Car Credit starts signed in to Gmail.
+export function GroupIntegrations({ entryKey, goalName, settings, editable, onChange }: { entryKey: string; goalName: string; settings: SetupSettings; editable: boolean; onChange: (s: SetupSettings) => void }) {
+  const connected = (id: ServiceId) => settings.integrations.includes(id);
+  const toggle = (id: ServiceId, name: string) => {
+    const on = !connected(id);
+    onChange({ ...settings, integrations: on ? [...settings.integrations, id] : settings.integrations.filter((x) => x !== id) });
+    toast(on ? `${name} connected to ${goalName} (simulated)` : `${name} disconnected from ${goalName}`, { description: on ? "A real connection needs Google sign-in (OAuth) and a backend." : "Records already confirmed stay." });
+  };
+  const mailbox = mailboxFor(entryKey, settings);
   return (
-    <>
-      <PageHeader
-        title="Integrations"
-        description="Connect Google services to your groups. Only group Owners see this page."
-        actions={<Link href={`${base}/import`} className={buttonVariants({ variant: "outline" })}>Import review <Badge variant="secondary" className="bg-warning-soft text-warning">2</Badge></Link>}
-      />
-      <Alert>
-        <Info aria-hidden />
-        <AlertTitle>Gmail import is a simulation in v1</AlertTitle>
-        <AlertDescription>No real Gmail account is connected and no bank data is read. Sample emails are fictional. Real import needs Google OAuth, the Gmail API and a server-side worker; access to Gmail does not give access to a bank account.</AlertDescription>
-      </Alert>
-
-      <div className="grid gap-4 md:grid-cols-3">
-        {services.map(({ id, Icon, name, what, connected }) => (
-          <Card key={id}>
-            <CardContent className="flex h-full flex-col gap-3">
-              <div className="flex items-start justify-between gap-2">
-                <span className="flex size-9 items-center justify-center rounded-lg bg-accent text-accent-foreground"><Icon className="size-4" aria-hidden /></span>
-                {connected ? <StatusBadge status="Active" /> : <Badge variant="outline" className="text-muted-foreground">Not connected</Badge>}
-              </div>
-              <div className="flex-1"><p className="font-medium">{name}</p><p className="text-sm text-muted-foreground">{what}</p></div>
-              {connected ? (
-                <div className="space-y-2 text-sm">
-                  <p className="text-xs text-muted-foreground">demo.inbox@example.com · last sync Oct 25, 08:00 · next Oct 26, 08:00</p>
-                  <div className="flex flex-wrap gap-2">
-                    <Button variant="outline" size="sm" onClick={() => toast("Simulated sync finished: 2 new candidates")}>Sync now</Button>
-                    <Button variant="ghost" size="sm" onClick={notReal}>Disconnect</Button>
-                  </div>
+    <div className="space-y-4">
+      <ul className="divide-y rounded-lg border">
+        {SERVICES.map(({ id: sid, name, what }) => { const Icon = icons[sid]; const on = connected(sid); return (
+          <li key={sid} className="p-3">
+            {/* Gmail opens like an accordion: its connection settings sit inside the Gmail row */}
+            <Collapsible>
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-accent text-accent-foreground"><Icon className="size-4" aria-hidden /></span>
+                <div className="min-w-0 flex-1">
+                  <p className="flex flex-wrap items-center gap-2 text-sm font-medium">{name}{on ? <StatusBadge status="Active" /> : <Badge variant="outline" className="text-muted-foreground">Not connected</Badge>}</p>
+                  <p className="text-xs text-muted-foreground">{on && sid === "gmail" ? (mailbox?.connected ? `${mailbox.address} · ${mailbox.method === "oauth" ? "Google sign-in" : "IMAP"} · import jobs in Scheduled jobs` : "Added, not signed in yet: open Connection to finish") : what}</p>
                 </div>
-              ) : <Button variant="outline" size="sm" className="self-start" onClick={notReal}>Connect {name}</Button>}
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-
-      <Section title="Gmail import rules" description="How an email becomes a proposed transaction.">
-        <Row id="prov" label="Bank or provider"><NativeSelect id="prov" defaultValue="bpi"><option value="bpi">BPI (sample format)</option><option value="gcash">GCash (sample format)</option></NativeSelect></Row>
-        <Row id="q" label="Gmail search query" hint="Sender and subject filters."><Input id="q" defaultValue="from:notify@example-bank.test subject:(Transfer Received)" /></Row>
-        <Row id="suf" label="Account suffix" hint="Last four digits to match."><Input id="suf" defaultValue="4821" inputMode="numeric" maxLength={4} /></Row>
-        <Row id="alias" label="Account holder aliases"><Input id="alias" defaultValue="B. Santos, Bernz S." /></Row>
-        <Row id="dir" label="Expected direction"><NativeSelect id="dir" defaultValue="in"><option value="in">Incoming only</option><option value="out">Outgoing only</option><option value="both">Both</option></NativeSelect></Row>
-        <Row id="goal" label="Destination goal"><NativeSelect id="goal" defaultValue="car"><option value="car">Family / Car Credit</option><option value="ef">Family / Emergency Fund</option></NativeSelect></Row>
-        <Row id="freq" label="Sync schedule" hint="Runs as a scheduled job."><Link href={`${base}/jobs`} className="text-sm text-primary underline underline-offset-3">Daily at 8:00 AM · change in Scheduled Jobs</Link></Row>
-        <Button onClick={save}>Save rules</Button>
-      </Section>
-
-      <Section title="Import history" description="Latest simulated runs.">
-        <ul className="divide-y text-sm">
-          {[["Oct 25, 08:00", "Success", "2 candidates, 1 duplicate skipped"], ["Oct 24, 08:00", "Success", "0 new"], ["Oct 19, 08:00", "Failed", "1 email could not be parsed"]].map(([t, s, n]) => (
-            <li key={t} className="flex flex-wrap items-center justify-between gap-2 py-2"><span>{t}</span><span className="text-muted-foreground">{n}</span><StatusBadge status={s === "Success" ? "Success" : "Failed"} /></li>
-          ))}
-        </ul>
-      </Section>
-
-      <Section title="Revoke access" description="Disconnect Google and delete stored tokens.">
-        <div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-sm font-medium">Revoke Gmail access</p><p className="text-xs text-muted-foreground">Stops imports. Records already confirmed stay.</p></div><Button variant="outline" onClick={notReal}>Revoke access</Button></div>
-      </Section>
-    </>
+                <div className="flex flex-wrap items-center gap-2">
+                  {editable && <Button variant={on ? "ghost" : "outline"} size="sm" onClick={() => toggle(sid, name)}>{on ? "Disconnect" : "Connect"}<span className="sr-only"> {name} to {goalName}</span></Button>}
+                  {on && sid === "gmail" && (
+                    <CollapsibleTrigger render={<Button variant="outline" size="sm" className="[&[data-panel-open]>svg]:rotate-180" />}>
+                      Connection <ChevronDown className="transition-transform" aria-hidden />
+                    </CollapsibleTrigger>
+                  )}
+                </div>
+              </div>
+              {on && sid === "gmail" && <CollapsibleContent><div className="mt-3 border-t pt-3 sm:pl-12"><GmailSetup entryKey={entryKey} goalName={goalName} settings={settings} editable={editable} onChange={onChange} /></div></CollapsibleContent>}
+            </Collapsible>
+          </li>
+        ); })}
+      </ul>
+    </div>
   );
 }

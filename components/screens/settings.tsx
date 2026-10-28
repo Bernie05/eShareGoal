@@ -36,9 +36,8 @@ export const save = () => toast.success("Settings saved (preview only)");
 
 export function SettingsTabs() {
   const viewAs = useViewAs();
-  const owner = viewAs === "owner";
-  // Groups and goals and Notifications are Owner-only; Gmail and import settings live on the Integrations page.
-  const tabs = [["general", "General"], ["account", "Account"], ...(owner ? [["groups", "Groups and goals"], ["notifications", "Notifications"]] : []), ...(viewAs === "admin" ? [["email", "Email delivery"]] : []), ["privacy", "Privacy and security"]];
+  // Personal settings only. Integrations, scheduled jobs and notifications are set per group (Group settings).
+  const tabs = [["general", "General"], ["account", "Account"], ...(viewAs === "admin" ? [["email", "Email delivery"]] : []), ["privacy", "Privacy and security"]];
   return (
     <Tabs defaultValue="general" className="gap-4">
       <TabsList className="h-auto w-full flex-wrap justify-start">
@@ -65,25 +64,6 @@ export function SettingsTabs() {
           <Button onClick={save}>Save changes</Button>
         </Section>
       </TabsContent>
-
-      {owner && <TabsContent value="groups">
-        <Section title="Groups and goals" description="Defaults for new groups and goals.">
-          <Row id="dg" label="Default group"><NativeSelect id="dg" defaultValue="family"><option value="family">Family</option><option value="friends">Friends</option></NativeSelect></Row>
-          <Toggle id="rem" label="Remind 3 days before an installment is due" on />
-          <Button onClick={save}>Save changes</Button>
-        </Section>
-      </TabsContent>}
-
-
-      {owner && <TabsContent value="notifications">
-        <Section title="Notifications" description="Choose what reaches you.">
-          <Toggle id="n1" label="Payment due reminders" on />
-          <Toggle id="n2" label="New import candidates" on />
-          <Toggle id="n3" label="Goal milestones and member updates" on />
-          <Toggle id="n4" label="Email notifications" hint="Sent to your account email." />
-          <Button onClick={save}>Save changes</Button>
-        </Section>
-      </TabsContent>}
 
       {viewAs === "admin" && <TabsContent value="email"><EmailDelivery /></TabsContent>}
 

@@ -1,17 +1,21 @@
 import Link from "next/link";
-import { Clock, Dumbbell, Landmark, ListChecks, PiggyBank, Plus, Target, Users } from "lucide-react";
+import { Clock, Dumbbell, Car, Landmark, ListChecks, PiggyBank, Plus, Target, Users } from "lucide-react";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState, PageHeader, StatCard, StatusBadge } from "@/components/app/primitives";
 import { MyGoalChart } from "./charts";
-import { groups, members, ME, myActivity, type GoalType, type MyGoalDetail } from "@/lib/demo-data";
+import { myActivityFor, type GoalType, type MyGoalDetail } from "@/lib/demo-data";
+import { ACCOUNTS, createdGroupsFor, membersOf, roleIn, sampleGroupsFor, type Account } from "@/lib/accounts";
 import { goalPath } from "@/lib/screens";
-import type { ViewAs } from "@/lib/view-as";
+import type { CreatedGroup, ViewAs } from "@/lib/view-as";
+import { CreatedGoalAccordionItem } from "./goal-page";
+import { fmtDate } from "@/lib/money";
+import type { CreatedGoal } from "@/lib/created-goals";
 import { OwnerOnly, RoleBadge } from "@/components/app/view-as";
 
 const base = "/design-preview";
-const goalIcon: Record<GoalType, typeof Landmark> = { loan: Landmark, shared_money: PiggyBank, fitness: Dumbbell, tasks: ListChecks, custom: Target };
+const goalIcon: Record<GoalType, typeof Landmark> = { loan: Car, shared_money: PiggyBank, fitness: Dumbbell, tasks: ListChecks, custom: Target };
 // The accordion panel underlines links and spaces paragraphs by default; dashboard panels hold cards, so turn both off.
 const panel = "[&_a]:no-underline [&_p:not(:last-child)]:mb-0";
 
@@ -43,20 +47,23 @@ function GoalDashboard({ g, viewAs }: { g: MyGoalDetail; viewAs: ViewAs }) {
   );
 }
 
-const roleNote: Record<ViewAs, string> = {
-  owner: "You can add records and change any goal in these groups.",
-  member: "You can view and monitor. Only the group Owner can add records or change goals.",
-  admin: "Read-only access to every group.",
-};
 
 // ---------- Dashboard: groups (outer accordion) > goals (inner accordion) ----------
-export function DashboardScreen({ viewAs }: { viewAs: ViewAs }) {
-  const me = members.find((m) => m.id === ME)!;
-  const admin = viewAs === "admin";
-  // A System Admin sees every goal in every active group; Owners and Members see the goals they joined.
+// account: who is looking. created: every created group (this account sees the ones it is in).
+// Roles are per group: the same user is Owner where they own the group and Member elsewhere.
+export function DashboardScreen({ account, created, newGoals = [] }: { account: Account; created: CreatedGroup[]; newGoals?: CreatedGoal[] }) {
+  const me = ACCOUNTS[account];
+  const admin = account === "admin";
+  const role = (groupId: string): ViewAs => roleIn(account, groupId, created) ?? "member";
+  const mineCreated = createdGroupsFor(account, created);
+  // A System Admin sees every goal in every active group; a user sees the goals they joined, with their own numbers.
   const rows = admin
-    ? groups.filter((g) => !g.archived).map((g) => ({ g, last: "", goals: g.goals.map((x) => ({ ...x, detail: undefined as MyGoalDetail | undefined })) }))
-    : myActivity.map((a) => ({ g: groups.find((g) => g.id === a.groupId)!, last: a.last, goals: a.goals.map((x) => ({ ...x, detail: x as MyGoalDetail | undefined })) }));
+    ? sampleGroupsFor(account).map((g) => ({ g, last: "", goals: g.goals.map((x) => ({ ...x, detail: undefined as MyGoalDetail | undefined })) }))
+    : myActivityFor(me.name).map((a) => ({ g: sampleGroupsFor(account).find((g) => g.id === a.groupId)!, last: a.last, goals: a.goals.map((x) => ({ ...x, detail: x as MyGoalDetail | undefined })) }));
+  const roles = [...rows.map(({ g }) => g), ...mineCreated].map((g) => ({ name: g.name, r: role(g.id) }));
+  const where = (r: ViewAs) => roles.filter((x) => x.r === r).map((x) => x.name).join(", ");
+  const note = admin ? "Read-only access to every group."
+    : [where("owner") && `Owner of ${where("owner")} (you add records and change goals there)`, where("member") && `Member of ${where("member")} (view only)`].filter(Boolean).join(" · ") || "You are not in a group yet.";
   return (
     <>
       <PageHeader
@@ -65,16 +72,16 @@ export function DashboardScreen({ viewAs }: { viewAs: ViewAs }) {
         actions={<OwnerOnly><Link href={`${base}/new-goal`} className={buttonVariants()}><Plus aria-hidden /> New goal</Link></OwnerOnly>}
       />
       <div className="flex flex-wrap items-center gap-2 rounded-xl border bg-card px-4 py-3 text-sm">
-        <span className="text-muted-foreground">You are viewing as</span><RoleBadge className="text-sm" />
-        <span className="text-muted-foreground">{roleNote[viewAs]}</span>
+        <span className="text-muted-foreground">You are viewing as</span>{admin ? <RoleBadge role="admin" className="text-sm" /> : <span className="font-medium">{me.label}</span>}
+        <span className="text-muted-foreground">{note}</span>
       </div>
-      <Accordion multiple defaultValue={[rows[0].g.id]} className="gap-3">
+      <Accordion multiple defaultValue={[rows[0]?.g.id ?? mineCreated[0]?.id ?? ""]} className="gap-3">
         {rows.map(({ g, last, goals }) => (
           <AccordionItem key={g.id} value={g.id} className="rounded-xl bg-card ring-1 ring-foreground/10 not-last:border-b-0">
             <AccordionTrigger className="min-w-0 items-center gap-3 px-4 py-3.5 hover:no-underline">
               <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground"><Users className="size-4" aria-hidden /></span>
               <span className="min-w-0 flex-1">
-                <span className="flex flex-wrap items-center gap-2 text-base font-medium">{g.name}<RoleBadge /></span>
+                <span className="flex flex-wrap items-center gap-2 text-base font-medium">{g.name}<RoleBadge role={role(g.id)} /></span>
                 <span className="block truncate text-xs font-normal text-muted-foreground">
                   {g.members} members · {admin ? `${g.goals.length} goals` : `${goals.length} of ${g.goals.length} goals joined · last activity ${last}`}
                 </span>
@@ -96,17 +103,40 @@ export function DashboardScreen({ viewAs }: { viewAs: ViewAs }) {
                       </AccordionTrigger>
                       <AccordionContent className={`px-3 pt-1 pb-3 ${panel}`}>
                         {goal.detail
-                          ? <GoalDashboard g={goal.detail} viewAs={viewAs} />
-                          : <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-muted/40 p-3"><span className="text-muted-foreground">System admins have no activity of their own. Open the goal to see every record.</span><Link href={goalPath({ ...goal, joined: true }, viewAs)} className={buttonVariants({ variant: "outline", size: "sm" })}>Open {goal.name}</Link></div>}
+                          ? <GoalDashboard g={goal.detail} viewAs={role(g.id)} />
+                          : <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-muted/40 p-3"><span className="text-muted-foreground">System admins have no activity of their own. Open the goal to see every record.</span><Link href={goalPath({ ...goal, joined: true }, "admin")} className={buttonVariants({ variant: "outline", size: "sm" })}>Open {goal.name}</Link></div>}
                       </AccordionContent>
                     </AccordionItem>
                   );
                 })}
+                {newGoals.filter((x) => x.groupId === g.id).map((x) => <CreatedGoalAccordionItem key={x.id} g={x} members={membersOf(g.id, created)} panelClass={panel} />)}
               </Accordion>
               <Link href={`${base}/group?group=${g.id}`} className={`${buttonVariants({ variant: "ghost", size: "sm" })} mt-3`}>Open {g.name} group</Link>
             </AccordionContent>
           </AccordionItem>
         ))}
+        {mineCreated.map((g) => { // created groups: same item as the sample groups
+          const mine = newGoals.filter((x) => x.groupId === g.id);
+          const people = membersOf(g.id, created);
+          const r = role(g.id);
+          return (
+            <AccordionItem key={g.id} value={g.id} className="rounded-xl bg-card ring-1 ring-foreground/10 not-last:border-b-0">
+              <AccordionTrigger className="min-w-0 items-center gap-3 px-4 py-3.5 hover:no-underline">
+                <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground"><Users className="size-4" aria-hidden /></span>
+                <span className="min-w-0 flex-1">
+                  <span className="flex flex-wrap items-center gap-2 text-base font-medium">{g.name}<RoleBadge role={r} /></span>
+                  <span className="block truncate text-xs font-normal text-muted-foreground">{people.length} {people.length === 1 ? "member" : "members"} · {mine.length} {mine.length === 1 ? "goal" : "goals"} · created {fmtDate(g.created)}</span>
+                </span>
+              </AccordionTrigger>
+              <AccordionContent className={`px-4 pt-1 pb-4 ${panel}`}>
+                {mine.length
+                  ? <Accordion multiple defaultValue={[mine[0].id]} className="gap-2">{mine.map((x) => <CreatedGoalAccordionItem key={x.id} g={x} members={people} panelClass={panel} />)}</Accordion>
+                  : <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-muted/40 p-3"><span className="text-muted-foreground">No goals yet.{r === "owner" && " As the Owner you can add the first one."}</span>{r === "owner" && <Link href={`${base}/new-goal?group=${g.id}`} className={buttonVariants({ size: "sm" })}><Plus aria-hidden /> Add a goal</Link>}</div>}
+                <Link href={`${base}/group?group=${g.id}`} className={`${buttonVariants({ variant: "ghost", size: "sm" })} mt-3`}>Open {g.name} group</Link>
+              </AccordionContent>
+            </AccordionItem>
+          );
+        })}
       </Accordion>
     </>
   );

@@ -2,7 +2,8 @@
 
 import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, XAxis, YAxis } from "recharts";
 import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
-import { byMember, members, monthly, type GoalPoint } from "@/lib/demo-data";
+import { members, type GoalPoint } from "@/lib/demo-data";
+import { useCarCredit } from "@/components/app/car-credit";
 
 const peso0 = (v: number) => "₱" + v.toLocaleString("en-PH");
 const axis = { tickLine: false, axisLine: false, tickMargin: 8 } as const;
@@ -11,7 +12,9 @@ const memberConfig: ChartConfig = Object.fromEntries(members.map((m) => [m.id, {
 const flowConfig: ChartConfig = { incoming: { label: "Deposits in", color: "var(--success)" }, outgoing: { label: "Payments and expenses out", color: "var(--destructive)" } };
 
 // Every chart needs a text alternative: aria-label here, and the data is also in the tables on the same screen.
+// Car Credit charts read the live data (sample plus records added in the app).
 export function MonthlyContributionsChart() {
+  const { monthly } = useCarCredit();
   return (
     <ChartContainer config={memberConfig} className="h-64 w-full" role="img" aria-label="Monthly contributions by member, stacked bars">
       <BarChart data={monthly}>
@@ -27,6 +30,7 @@ export function MonthlyContributionsChart() {
 }
 
 export function InOutChart() {
+  const { monthly } = useCarCredit();
   return (
     <ChartContainer config={flowConfig} className="h-64 w-full" role="img" aria-label="Deposits versus payments and expenses per month">
       <BarChart data={monthly}>
@@ -43,6 +47,7 @@ export function InOutChart() {
 }
 
 export function ByMemberChart() {
+  const { byMember } = useCarCredit();
   const data = byMember.map((b) => ({ id: b.member.id, name: b.member.name, value: b.total / 100 }));
   return (
     <ChartContainer config={memberConfig} className="mx-auto h-56 w-full" role="img" aria-label="Share of total contributions by member">
@@ -69,6 +74,43 @@ export function MyGoalChart({ data, unit, label }: { data: GoalPoint[]; unit: "p
         <ChartTooltip content={<ChartTooltipContent formatter={(v) => <span className="num">{label}: {unit === "peso" ? peso0(Number(v)) : String(v)}</span>} />} />
         <Bar dataKey="value" fill="var(--color-value)" radius={3} />
       </BarChart>
+    </ChartContainer>
+  );
+}
+
+// Any savings goal: one colour per person, in a fixed order so a person keeps their colour across charts.
+const personConfig = (people: string[]): ChartConfig => Object.fromEntries(people.map((p, i) => [p, { label: p, color: `var(--chart-${(i % 5) + 1})` }]));
+const key = (p: string) => p.replace(/\W/g, "");
+
+export function SavingsMonthlyChart({ data, people, goal }: { data: Record<string, string | number>[]; people: string[]; goal: string }) {
+  const config = Object.fromEntries(people.map((p, i) => [key(p), { label: p, color: `var(--chart-${(i % 5) + 1})` }])) as ChartConfig;
+  const rows = data.map((r) => Object.fromEntries(Object.entries(r).map(([k, v]) => [k === "month" ? k : key(k), v])));
+  return (
+    <ChartContainer config={config} className="h-64 w-full" role="img" aria-label={`${goal}: deposits per month by member, stacked bars`}>
+      <BarChart data={rows}>
+        <CartesianGrid vertical={false} />
+        <XAxis dataKey="month" {...axis} />
+        <YAxis {...axis} width={48} tickFormatter={(v) => `${v / 1000}k`} />
+        <ChartTooltip content={<ChartTooltipContent formatter={(v, n) => <span className="num">{String(config[String(n)]?.label ?? n)}: {peso0(Number(v))}</span>} />} />
+        <ChartLegend content={<ChartLegendContent />} />
+        {people.map((p) => <Bar key={p} dataKey={key(p)} stackId="a" fill={`var(--color-${key(p)})`} />)}
+      </BarChart>
+    </ChartContainer>
+  );
+}
+
+export function SavingsShareChart({ data, goal }: { data: { name: string; total: number }[]; goal: string }) {
+  const config = personConfig(data.map((d) => d.name));
+  const rows = data.map((d) => ({ id: d.name, value: d.total / 100 }));
+  return (
+    <ChartContainer config={config} className="mx-auto h-56 w-full" role="img" aria-label={`${goal}: share of deposits by member`}>
+      <PieChart>
+        <ChartTooltip content={<ChartTooltipContent nameKey="id" formatter={(v, n) => <span className="num">{String(n)}: {peso0(Number(v))}</span>} />} />
+        <Pie data={rows} dataKey="value" nameKey="id" innerRadius={52} outerRadius={84} strokeWidth={2} isAnimationActive={false}>
+          {rows.map((d) => <Cell key={d.id} fill={`var(--color-${d.id})`} />)}
+        </Pie>
+        <ChartLegend content={<ChartLegendContent nameKey="id" />} />
+      </PieChart>
     </ChartContainer>
   );
 }

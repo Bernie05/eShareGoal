@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { AlertTriangle, ChevronLeft, ChevronRight, Download, Dumbbell, Eye, Landmark, ListChecks, PiggyBank, Search, Target, Users, X } from "lucide-react";
+import { AlertTriangle, ChevronLeft, ChevronRight, Download, Dumbbell, Eye, Car, Landmark, ListChecks, PiggyBank, Search, Target, Users, X } from "lucide-react";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -11,7 +11,7 @@ import { NativeSelect } from "@/components/ui/native-select";
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { EmptyState, PageHeader, StatusBadge, toneText } from "@/components/app/primitives";
-import { RoleBadge } from "@/components/app/view-as";
+import { RoleBadge, useMe } from "@/components/app/view-as";
 import { ISSUE_STATUSES, type Activity } from "@/lib/activity-data";
 import { groups, type GoalType } from "@/lib/demo-data";
 import { fmtDate, peso } from "@/lib/money";
@@ -23,7 +23,7 @@ const ALL = "";
 const empty = { q: "", member: ALL, kind: ALL, status: ALL, source: ALL, from: "", to: "", issues: false };
 type Filters = typeof empty;
 
-const goalIcon: Record<GoalType, typeof Landmark> = { loan: Landmark, shared_money: PiggyBank, fitness: Dumbbell, tasks: ListChecks, custom: Target };
+const goalIcon: Record<GoalType, typeof Landmark> = { loan: Car, shared_money: PiggyBank, fitness: Dumbbell, tasks: ListChecks, custom: Target };
 const goalTypeOf = new Map(groups.flatMap((g) => g.goals).map((x) => [x.id, x.type]));
 const uniq = (xs: string[]) => [...new Set(xs)].sort((a, b) => a.localeCompare(b));
 const when = (at: string) => `${fmtDate(at.slice(0, 10))}, ${at.slice(11, 16)}`;
@@ -144,6 +144,7 @@ function GoalSection({ id, rows, title, onOpen }: { id: string; rows: Activity[]
 // The System Admin sees every group; Owners and Members only the goals they joined (rows arrive already scoped).
 export function ActivityHistory({ rows, viewAs }: { rows: Activity[]; viewAs: ViewAs }) {
   const [open, setOpen] = useState<Activity | null>(null);
+  const me = useMe();
   const admin = viewAs === "admin";
 
   // Groups in sidebar order; inside each, goals in sidebar order, then a "Whole group" section for group-level rows.
@@ -165,7 +166,7 @@ export function ActivityHistory({ rows, viewAs }: { rows: Activity[]; viewAs: Vi
         actions={<Button variant="outline" onClick={() => downloadCsv(rows, "activity-history")} disabled={!rows.length}><Download aria-hidden /> Export all</Button>}
       />
       <div className="flex flex-wrap items-center gap-2 rounded-xl border bg-card px-4 py-3 text-sm">
-        <span className="text-muted-foreground">You are viewing as</span><RoleBadge />
+        <span className="text-muted-foreground">You are viewing as</span>{admin ? <RoleBadge role="admin" /> : <span className="font-medium">{me}</span>}
         <span className="text-muted-foreground">{plural(rows.length, "record")} in {plural(tree.length, "group")}{issues > 0 && <> · <span className={cn("font-medium", toneText.warning)}>{issues} need a look</span></>}</span>
       </div>
 

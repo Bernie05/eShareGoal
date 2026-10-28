@@ -1,6 +1,6 @@
 import { groups, members, transactions, type Tx } from "./demo-data";
 import { addMonths } from "./money";
-import type { ViewAs } from "./view-as";
+import { sampleGroupsFor, type Account } from "./accounts";
 
 // FICTIONAL activity log across every group: one row per thing that happened, with who recorded it and its audit trail.
 // Group Owners record everything (Family: Bernz, Friends: Carla); imports are confirmed by the Owner.
@@ -37,14 +37,14 @@ const monthly = (from: string, count: number, make: (date: string, i: number) =>
   Array.from({ length: count }, (_, i) => make(addMonths(from, i), i)).flat();
 
 const other: Activity[] = [
-  // Family > Emergency Fund: Bernz, Apr-Oct
-  ...monthly("2026-04-20", 7, (d, i) => [row({ at: `${d}T19:05`, groupId: "family", goalId: "emergency-fund", kind: "Deposit", subject: "Bernz", by: "Bernz", amount: 600_000, detail: "Monthly share", status: "Confirmed", source: "Manual", ref: `DEMO-EF${String(i + 1).padStart(2, "0")}`, audit: [`${d} · Recorded by Bernz (BPI Transfer)`] })]),
+  // Family > Emergency Fund: all three, Apr-Oct (₱126,000)
+  ...monthly("2026-04-20", 7, (d, i) => ["Bernz", "Babylyn", "Billy"].map((who) => row({ at: `${d}T19:05`, groupId: "family", goalId: "emergency-fund", kind: "Deposit", subject: who, by: "Bernz", amount: 600_000, detail: "Monthly share", status: "Confirmed", source: "Manual", ref: `DEMO-EF${who[1].toUpperCase()}${String(i + 1).padStart(2, "0")}`, audit: [`${d} · Recorded by Bernz (BPI Transfer)`] }))),
   // Family > Grocery Budget: Babylyn and Billy only (Bernz did not join)
   ...monthly("2026-06-01", 5, (d, i) => ["Babylyn", "Billy"].map((who) => row({ at: `${d}T10:30`, groupId: "family", goalId: "grocery-budget", kind: "Deposit", subject: who, by: "Bernz", amount: 450_000, detail: "Grocery share", status: i === 4 && who === "Billy" ? "Pending" : "Confirmed", source: "Manual", ref: `DEMO-GR${who[1].toUpperCase()}${i + 1}`, audit: [`${d} · Recorded by Bernz (GCash)`] }))),
   // Family > Family Fitness
   ...["2026-10-22", "2026-10-20", "2026-10-15"].map((d, i) => row({ at: `${d}T06:30`, groupId: "family", goalId: "family-fitness", kind: "Progress log", subject: ["Billy", "Babylyn", "Bernz"][i], by: "Bernz", amount: null, detail: ["30-minute run", "Strength session", "Swim, 1 km"][i], status: "Confirmed", source: "Manual", ref: null, audit: [`${d} · Logged by Bernz`] })),
-  // Friends > Vacation Fund: four members, Feb-Oct
-  ...monthly("2026-02-15", 9, (d, i) => ["Bernz", "Carla", "Dino", "Ella"].map((who) => row({ at: `${d}T12:00`, groupId: "friends", goalId: "vacation-fund", kind: "Deposit", subject: who, by: "Carla", amount: 200_000, detail: "Monthly share", status: i === 8 && who === "Dino" ? "Pending" : "Confirmed", source: i % 3 === 0 ? "Imported" : "Manual", ref: `DEMO-VF${who[0]}${i + 1}`, audit: [`${d} · Recorded by Carla`] }))),
+  // Friends > Vacation Fund: four members, Feb-Oct; Dino from April (₱68,000)
+  ...monthly("2026-02-15", 9, (d, i) => ["Bernz", "Carla", "Dino", "Ella"].filter((who) => who !== "Dino" || i >= 2).map((who) => row({ at: `${d}T12:00`, groupId: "friends", goalId: "vacation-fund", kind: "Deposit", subject: who, by: "Carla", amount: 200_000, detail: "Monthly share", status: i === 8 && who === "Dino" ? "Pending" : "Confirmed", source: i % 3 === 0 ? "Imported" : "Manual", ref: `DEMO-VF${who[0]}${i + 1}`, audit: [`${d} · Recorded by Carla`] }))),
   // Friends > 30-Day Fitness Challenge
   ...["Bernz", "Dino", "Ella"].map((who, i) => row({ at: `2026-10-25T0${6 + i}:30`, groupId: "friends", goalId: "fitness-30", kind: "Progress log", subject: who, by: "Carla", amount: null, detail: "Day 12 check-in", status: "Confirmed", source: "Manual", ref: null, audit: ["2026-10-25 · Logged by Carla"] })),
   // Friends > Book Club (Bernz did not join)
@@ -61,8 +61,46 @@ const other: Activity[] = [
 
 export const activityLog: Activity[] = [...fromLedger, ...other].sort((a, b) => b.at.localeCompare(a.at));
 
-// What each role may see: the System Admin sees every group; Owners and Members only the goals they joined
-// (plus group-level rows of their groups). The server must apply this filter; the page only mirrors it.
-const joinedGoals = new Set(groups.flatMap((g) => g.goals).filter((x) => x.joined).map((x) => x.id));
-export const visibleActivity = (viewAs: ViewAs) =>
-  viewAs === "admin" ? activityLog : activityLog.filter((a) => (a.goalId ? joinedGoals.has(a.goalId) : true));
+// What each account may see: the System Admin sees every group; a user only the goals they joined in their groups
+// (plus group-level rows of those groups). The server must apply this filter; the page only mirrors it.
+export function visibleActivity(account: Account) {
+  if (account === "admin") return activityLog;
+  const mine = sampleGroupsFor(account);
+  const groupIds = new Set(mine.map((g) => g.id));
+  const joined = new Set(mine.flatMap((g) => g.goals).filter((x) => x.joined).map((x) => x.id));
+  return activityLog.filter((a) => groupIds.has(a.groupId) && (a.goalId ? joined.has(a.goalId) : true));
+}
+
+// --- Savings goals (shared money): the plan per goal; every figure below is computed from the activity log ---
+export type SavingsPlan =
+  | { kind: "target"; target: number; by: string; monthsLeft: number; about: string; milestones: [string, "Done" | "Upcoming", string][] }
+  | { kind: "monthly"; target: number; about: string }; // a budget that refills every month
+export const savingsPlans: Record<string, SavingsPlan> = {
+  "emergency-fund": { kind: "target", target: 30_000_000, by: "Dec 31, 2027", monthsLeft: 14, about: "Shared savings for the family.", milestones: [["₱50,000 saved", "Done", "Jun 2026"], ["₱100,000 saved", "Done", "Sep 2026"], ["₱200,000 saved", "Upcoming", "Apr 2027"], ["₱300,000 saved", "Upcoming", "Dec 2027"]] },
+  "grocery-budget": { kind: "monthly", target: 1_200_000, about: "One shared budget for the weekly grocery run." },
+  "vacation-fund": { kind: "target", target: 10_000_000, by: "Apr 30, 2027", monthsLeft: 6, about: "Barkada trip fund.", milestones: [["₱25,000 saved", "Done", "May 2026"], ["₱50,000 saved", "Done", "Aug 2026"], ["₱100,000 saved", "Upcoming", "Apr 2027"]] },
+};
+
+const THIS_MONTH = "2026-10";
+export function savingsGoal(id: string) {
+  const deposits = activityLog.filter((a) => a.goalId === id && a.kind === "Deposit" && a.status !== "Reversed"); // pending counts (decision)
+  const total = (xs: Activity[]) => xs.reduce((s, a) => s + (a.amount ?? 0), 0);
+  const people = [...new Set(deposits.map((a) => a.subject!))].sort();
+  const months = Array.from({ length: 12 }, (_, i) => addMonths("2025-11-01", i).slice(0, 7));
+  return {
+    saved: total(deposits),
+    thisMonth: total(deposits.filter((a) => a.at.startsWith(THIS_MONTH))),
+    pending: deposits.filter((a) => a.status === "Pending").length,
+    activeMonths: new Set(deposits.map((a) => a.at.slice(0, 7))).size,
+    people,
+    byMember: people.map((name) => {
+      const mine = deposits.filter((a) => a.subject === name);
+      return { name, total: total(mine), count: mine.length, latest: mine[0]?.at.slice(0, 10) ?? "", pending: mine.filter((a) => a.status === "Pending").length };
+    }),
+    monthly: months.map((m) => ({
+      month: new Date(`${m}-01T00:00:00Z`).toLocaleDateString("en-PH", { month: "short", timeZone: "UTC" }),
+      ...Object.fromEntries(people.map((p) => [p, total(deposits.filter((a) => a.subject === p && a.at.startsWith(m))) / 100])),
+    })),
+    recent: deposits.slice(0, 5),
+  };
+}

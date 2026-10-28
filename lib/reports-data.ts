@@ -1,5 +1,5 @@
 // FICTIONAL reports for the System Admin: problems people reported, reports about users, and problems the system found itself.
-export type ReportType = "Issue" | "User report" | "Payment dispute" | "Sign-up flag" | "System";
+export type ReportType = "Issue" | "User report" | "Payment dispute" | "Sign-up flag" | "Goal request" | "System";
 export type ReportStatus = "Open" | "In review" | "Resolved" | "Dismissed";
 export type Priority = "High" | "Medium" | "Low";
 export type Report = {

@@ -14,7 +14,7 @@ import type { EmailMode } from "@/lib/view-as";
 import { cn } from "@/lib/utils";
 
 const ID_TYPES = ["PhilSys National ID", "Driver's License", "Passport", "UMID", "Postal ID"];
-const TODAY = "2026-10-26";
+import { TODAY } from "@/lib/demo-data";
 const blank = { name: "", email: "", phone: "", password: "", confirm: "", birthdate: "", address: "", idType: "", idNumber: "", idExpiry: "", front: "", back: "", selfie: "", consent: false };
 type Form = typeof blank;
 type Errors = Partial<Record<keyof Form, string>>;

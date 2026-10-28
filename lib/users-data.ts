@@ -1,6 +1,6 @@
 import { activityLog } from "./activity-data";
 
-// FICTIONAL user accounts for the System Admin's Users page. Roles are as seen by the System Admin (Bernz owns Family and Friends).
+// FICTIONAL user accounts for the System Admin's Users page. Roles are per group: Bernz owns Family and Walking Club and is a Member of Friends, which Carla owns.
 // New sign-ups must submit a valid ID; they stay "Pending review" until a System Admin approves or rejects them.
 export type UserStatus = "Active" | "Pending review" | "Invited" | "Revoked" | "Rejected";
 export type IdType = "PhilSys National ID" | "Driver's License" | "Passport" | "UMID" | "Postal ID";
@@ -27,13 +27,18 @@ const u = (id: string, name: string, status: UserStatus, joined: string, lastAct
 
 export const users: User[] = [
   u("admin", "System Admin", "Active", "2025-10-01", "Today, 9:40 AM", [{ group: "All groups", role: "Viewer" }], { site: "System Admin" }),
-  u("bernz", "Bernz", "Active", "2025-10-18", "Today, 8:12 AM", [{ group: "Family", role: "Owner" }, { group: "Friends", role: "Owner" }], { verification: verified("Bernardo Santos", "PhilSys National ID", "•••• •••• 4821", "2025-10-18"), history: ["Oct 18, 2025 · Approved by System Admin"] }),
+  u("bernz", "Bernz", "Active", "2025-10-18", "Today, 8:12 AM", [{ group: "Family", role: "Owner" }, { group: "Friends", role: "Member" }, { group: "Walking Club", role: "Owner" }], { verification: verified("Bernardo Santos", "PhilSys National ID", "•••• •••• 4821", "2025-10-18"), history: ["Oct 18, 2025 · Approved by System Admin"] }),
   u("babylyn", "Babylyn", "Active", "2025-10-18", "Yesterday", [{ group: "Family", role: "Member" }], { verification: verified("Babylyn Santos", "UMID", "••••-•••••••-7710", "2025-10-18"), history: ["Oct 19, 2025 · Approved by System Admin"] }),
   u("billy", "Billy", "Active", "2025-10-20", "Today, 6:30 AM", [{ group: "Family", role: "Member" }], { verification: verified("William Santos", "Driver's License", "N01-••-••3302", "2025-10-20"), history: ["Oct 20, 2025 · Approved by System Admin"] }),
-  u("carla", "Carla", "Active", "2026-02-03", "Today, 7:05 AM", [{ group: "Friends", role: "Member" }], { verification: verified("Carla Mendoza", "Passport", "P•••••12A", "2026-02-03"), history: ["Feb 3, 2026 · Approved by System Admin"] }),
+  u("carla", "Carla", "Active", "2026-02-03", "Today, 7:05 AM", [{ group: "Friends", role: "Owner" }], { verification: verified("Carla Mendoza", "Passport", "P•••••12A", "2026-02-03"), history: ["Feb 3, 2026 · Approved by System Admin"] }),
   u("dino", "Dino", "Active", "2026-02-03", "Yesterday", [{ group: "Friends", role: "Member" }], { verification: verified("Dino Garcia", "PhilSys National ID", "•••• •••• 9054", "2026-02-03"), history: ["Feb 3, 2026 · Approved by System Admin"] }),
   u("ella", "Ella", "Active", "2026-02-04", "Yesterday", [{ group: "Friends", role: "Member" }], { verification: verified("Ella Navarro", "Postal ID", "PRN ••••••4417", "2026-02-04"), history: ["Feb 4, 2026 · Approved by System Admin"] }),
   u("migs", "Migs", "Active", "2026-02-04", "Oct 2", [{ group: "Friends", role: "Member" }], { verification: verified("Miguel Torres", "UMID", "••••-•••••••-1180", "2026-02-04"), history: ["Feb 5, 2026 · Approved by System Admin"] }),
+  // Walking Club demo members (dummy accounts; the group exists once "Load walking demo" is used on My Groups)
+  u("ana.cruz", "Ana Cruz", "Active", "2026-05-01", "Today, 6:10 AM", [{ group: "Walking Club", role: "Member" }], { verification: verified("Ana Cruz", "PhilSys National ID", "•••• •••• 2210", "2026-05-01"), history: ["May 1, 2026 · Approved by System Admin"] }),
+  u("ben.reyes", "Ben Reyes", "Active", "2026-05-01", "Yesterday", [{ group: "Walking Club", role: "Member" }], { verification: verified("Benjamin Reyes", "Driver's License", "N03-••-••4471", "2026-05-01"), history: ["May 1, 2026 · Approved by System Admin"] }),
+  u("carlo.santos", "Carlo Santos", "Active", "2026-05-02", "Today, 5:45 AM", [{ group: "Walking Club", role: "Member" }], { verification: verified("Carlo Santos", "UMID", "••••-•••••••-6603", "2026-05-02"), history: ["May 2, 2026 · Approved by System Admin"] }),
+  u("dana.lim", "Dana Lim", "Active", "2026-05-02", "Today, 6:30 AM", [{ group: "Walking Club", role: "Member" }], { verification: verified("Dana Lim", "Passport", "P•••••45D", "2026-05-02"), history: ["May 2, 2026 · Approved by System Admin"] }),
   // Waiting for review
   u("nico", "Nico Santos", "Pending review", "2026-10-25", "Today, 7:52 AM", [], { verification: verified("Nicolas Santos", "PhilSys National ID", "•••• •••• 3307", "2026-10-25") }),
   u("liza", "Liza Ramos", "Pending review", "2026-10-24", "Yesterday", [], { verification: { ...verified("Liza Ramos", "Driver's License", "D12-••-••8841", "2026-10-24"), checks: [ok("Email confirmed"), ok("ID not expired"), ok("Name matches the ID"), bad("Selfie is blurry; face match could not be checked")] } }),

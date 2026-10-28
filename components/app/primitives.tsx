@@ -19,10 +19,10 @@ const toneClass: Record<Tone, string> = {
 export const toneText: Record<Tone, string> = { success: "text-success", danger: "text-destructive", warning: "text-warning", info: "text-info" };
 
 const statusTone: Record<string, Tone> = {
-  confirmed: "success", Confirmed: "success", Active: "success",
+  confirmed: "success", Confirmed: "success", Active: "success", Approved: "success",
   pending: "warning", "Pending Review": "warning", Detected: "info", Paused: "warning",
   reversed: "info", Reversed: "info", Pending: "warning", Done: "info", Archived: "info", Completed: "success",
-  Rejected: "danger", Error: "danger", Duplicate: "info", Overdue: "danger", Success: "success", Failed: "danger",
+  Rejected: "danger", Error: "danger", Paid: "success", "Partly paid": "warning", "Not yet paid": "warning", Overpaid: "success", Short: "warning", "Not paid": "danger", "Waiting for confirmation": "warning", Duplicate: "info", Overdue: "danger", Success: "success", Failed: "danger",
   Invited: "warning", Suspended: "danger", "Pending review": "warning", Revoked: "danger", Open: "warning", "In review": "info", Resolved: "success", Dismissed: "info",
 };
 
@@ -40,7 +40,7 @@ export function ProgressBar({ value, label, tone = "success" }: { value: number;
   );
 }
 
-export function PageHeader({ title, description, actions }: { title: string; description?: string; actions?: ReactNode }) {
+export function PageHeader({ title, description, actions }: { title: string; description?: ReactNode; actions?: ReactNode }) {
   return (
     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
       <div className="min-w-0">

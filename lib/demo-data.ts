@@ -1,8 +1,9 @@
 import { addMonths, fmtDate, loanSummary, peso } from "./money";
-import type { ViewAs } from "./view-as";
 
-// FICTIONAL DEMO DATA. Amounts in integer centavos. Reference date for the preview: 2026-10-25.
-export const TODAY = "2026-10-25";
+// FICTIONAL DEMO DATA. Amounts in integer centavos. The sample history runs Nov 2025 - Oct 2026.
+// TODAY: the current date in the Philippines (YYYY-MM-DD). The one "today" for the whole app: form defaults,
+// due dates, "in N days", reminders and which month a share belongs to.
+export const TODAY = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Manila" });
 
 // Group roles: the Owner changes anything in the group and its goals; a Member can only view. (System Admin is a site role, see lib/view-as.ts.)
 export type GroupRole = "Owner" | "Member";
@@ -17,20 +18,25 @@ export type TxType = "deposit" | "loan_payment" | "expense" | "withdrawal";
 export type TxStatus = "confirmed" | "pending" | "reversed";
 export type Tx = {
   id: string; memberId: string; amount: number; type: TxType; date: string;
-  method: "BPI Transfer" | "GCash" | "Cash"; ref?: string; status: TxStatus;
-  source: "manual" | "imported"; notes: string;
+  method: string; ref?: string; status: TxStatus;
+  source: "manual" | "imported" | "submission"; notes: string;
+  proofOf?: string; // added in the app from a member's approved submission (its receipt stays there)
 };
 
 // 12 months of deposits (Nov 2025 - Oct 2026) and 11 lender payments (Dec 2025 - Oct 2026).
 const deposits: Tx[] = [];
-const split: Record<string, number> = { bernz: 1_200_000, babylyn: 800_000, billy: 600_000 };
+// Each member's monthly share, deposited on the 1st (the lender installment is due on the 5th).
+export const monthlyShare: Record<string, number> = { bernz: 1_200_000, babylyn: 800_000, billy: 600_000 };
+// Months a member paid other than their share (member-month index): Babylyn paid ₱2,000 ahead in Aug, then ₱6,000 in Sep;
+// Bernz paid ₱500 ahead in Sep and Oct.
+const paidInstead: Record<string, number> = { "babylyn-9": 1_000_000, "babylyn-10": 600_000, "bernz-10": 1_250_000, "bernz-11": 1_250_000 };
 for (let m = 0; m < 12; m++) {
   const date = addMonths("2025-11-01", m);
   for (const mem of members) {
     if (mem.id === "billy" && (m === 4 || m === 8)) continue; // Billy missed two months
     const pending = m === 11 && mem.id === "billy";
     deposits.push({
-      id: `d-${mem.id}-${m}`, memberId: mem.id, amount: split[mem.id], type: "deposit", date,
+      id: `d-${mem.id}-${m}`, memberId: mem.id, amount: paidInstead[`${mem.id}-${m}`] ?? monthlyShare[mem.id], type: "deposit", date,
       method: mem.id === "billy" ? "GCash" : "BPI Transfer",
       ref: `DEMO-${mem.id.slice(0, 2).toUpperCase()}${String(m + 1).padStart(2, "0")}`,
       status: pending ? "pending" : "confirmed", source: m % 3 === 0 ? "imported" : "manual",
@@ -48,42 +54,55 @@ const expenses: Tx[] = [
   { id: "e-2", memberId: "bernz", amount: 320_000, type: "expense", date: "2026-03-20", method: "Cash", status: "confirmed", source: "manual", notes: "Vehicle registration" },
   { id: "e-3", memberId: "billy", amount: 480_000, type: "expense", date: "2026-08-02", method: "Cash", status: "reversed", source: "manual", notes: "Entered twice, reversed (see audit history)" },
 ];
-export const transactions: Tx[] = [...deposits, ...payments, ...expenses].sort((a, b) => b.date.localeCompare(a.date));
-
-const live = transactions.filter((t) => t.status !== "reversed"); // pending counts toward funds (decision)
+const sampleTransactions: Tx[] = [...deposits, ...payments, ...expenses];
+// The loan's terms and each member's monthly share. The Owner can change them in the goal's settings (see useCarCredit()).
+export type LoanTerms = { about: string; monthly: number; term: number; firstDue: string; shares: Record<string, number> };
+export const loan: LoanTerms = { about: "Family loan with a fixed 60-month schedule.", monthly: 2_400_000, term: 60, firstDue: "2025-12-05", shares: monthlyShare };
 const sum = (xs: Tx[]) => xs.reduce((s, t) => s + t.amount, 0);
-export const loan = { monthly: 2_400_000, term: 60, firstDue: "2025-12-05" };
-const paidCount = live.filter((t) => t.type === "loan_payment" && t.status === "confirmed").length;
-export const nextDue = addMonths(loan.firstDue, paidCount);
-
-const contributions = sum(live.filter((t) => t.type === "deposit"));
-const paidToLender = sum(live.filter((t) => t.type === "loan_payment" && t.status === "confirmed"));
-const otherOut = sum(live.filter((t) => t.type === "expense" || t.type === "withdrawal"));
-export const totals = {
-  contributions,
-  paidToLender,
-  otherOut,
-  available: contributions - paidToLender - otherOut,
-  installmentsDone: paidCount,
-  ...loanSummary(loan.monthly, loan.term, paidCount),
-};
-
-export const byMember = members.map((m) => {
-  const mine = transactions.filter((t) => t.memberId === m.id && t.type === "deposit" && t.status !== "reversed");
-  return { member: m, total: sum(mine), count: mine.length, latest: mine[0]?.date ?? "", txs: transactions.filter((t) => t.memberId === m.id) };
-});
-
 const ym = (d: string) => d.slice(0, 7);
-export const monthly = Array.from({ length: 12 }, (_, i) => {
-  const key = ym(addMonths("2025-11-01", i));
-  const row: Record<string, number | string> = { month: new Date(key + "-01T00:00:00Z").toLocaleDateString("en-PH", { month: "short", timeZone: "UTC" }) };
-  for (const m of members) row[m.id] = live.filter((t) => t.type === "deposit" && t.memberId === m.id && ym(t.date) === key).reduce((s, t) => s + t.amount, 0) / 100;
-  row.incoming = live.filter((t) => t.type === "deposit" && ym(t.date) === key).reduce((s, t) => s + t.amount, 0) / 100;
-  row.outgoing = live.filter((t) => t.type !== "deposit" && ym(t.date) === key).reduce((s, t) => s + t.amount, 0) / 100;
-  return row;
-});
 
-export const upcoming = [0, 1, 2].map((i) => ({ n: paidCount + i + 1, date: addMonths(loan.firstDue, paidCount + i), amount: loan.monthly }));
+/**
+ * Every Car Credit figure from one list of transactions: the sample history plus `added` (records saved in the app:
+ * approved member submissions and what the Owner adds). The server uses the sample alone; pages read the live
+ * version through useCarCredit() so totals, charts, installments and due dates move when a record is added.
+ * fix: the Owner's corrections, applied to every transaction; null drops a deleted one. terms: the loan's current terms.
+ */
+export function summarize(added: Tx[] = [], fix: (t: Tx) => Tx | null = (t) => t, terms: LoanTerms = loan) {
+  const transactions = [...added, ...sampleTransactions].map(fix).filter((t): t is Tx => t !== null).sort((a, b) => b.date.localeCompare(a.date));
+  const live = transactions.filter((t) => t.status !== "reversed"); // pending counts toward funds (decision)
+  const lender = live.filter((t) => t.type === "loan_payment" && t.status === "confirmed");
+  const paidCount = Math.min(terms.term, lender.length);
+  const contributions = sum(live.filter((t) => t.type === "deposit"));
+  const paidToLender = sum(lender);
+  const otherOut = sum(live.filter((t) => t.type === "expense" || t.type === "withdrawal"));
+  const totals = {
+    contributions, paidToLender, otherOut,
+    available: contributions - paidToLender - otherOut,
+    installmentsDone: paidCount,
+    ...loanSummary(terms.monthly, terms.term, paidCount),
+  };
+  const byMember = members.map((m) => {
+    const mine = transactions.filter((t) => t.memberId === m.id && t.type === "deposit" && t.status !== "reversed");
+    return { member: m, total: sum(mine), count: mine.length, latest: mine[0]?.date ?? "", txs: transactions.filter((t) => t.memberId === m.id) };
+  });
+  // The 12 months up to the reference month.
+  const monthly = Array.from({ length: 12 }, (_, i) => {
+    const key = ym(addMonths(ym(TODAY) + "-01", i - 11));
+    const row: Record<string, number | string> = { month: new Date(key + "-01T00:00:00Z").toLocaleDateString("en-PH", { month: "short", timeZone: "UTC" }) };
+    for (const m of members) row[m.id] = sum(live.filter((t) => t.type === "deposit" && t.memberId === m.id && ym(t.date) === key)) / 100;
+    row.incoming = sum(live.filter((t) => t.type === "deposit" && ym(t.date) === key)) / 100;
+    row.outgoing = sum(live.filter((t) => t.type !== "deposit" && ym(t.date) === key)) / 100;
+    return row;
+  });
+  const nextDue = addMonths(terms.firstDue, paidCount);
+  const upcoming = [0, 1, 2].filter((i) => paidCount + i < terms.term).map((i) => ({ n: paidCount + i + 1, date: addMonths(terms.firstDue, paidCount + i), amount: terms.monthly }));
+  return { transactions, totals, byMember, monthly, nextDue, upcoming, lenderPayments: lender, loan: terms };
+}
+export type CarCredit = ReturnType<typeof summarize>;
+
+// The sample alone, for server-rendered pages (goal cards, the group list).
+const sample = summarize();
+export const { transactions, totals, byMember, monthly, nextDue, upcoming } = sample;
 
 // --- Groups & goals ---
 export type GoalType = "shared_money" | "loan" | "fitness" | "tasks" | "custom";
@@ -134,13 +153,13 @@ export type MyGroupActivity = { groupId: string; last: string; goals: MyGoalDeta
 
 const monthLabels = monthly.map((r) => String(r.month));
 const series = (values: number[]): GoalPoint[] => monthLabels.map((month, i) => ({ month, value: values[i] ?? 0 }));
-const myDeposits = live.filter((t) => t.memberId === ME && t.type === "deposit");
-const myPut = sum(myDeposits);
-const myByMonth = monthLabels.map((_, i) => sum(myDeposits.filter((t) => t.date.startsWith(addMonths("2025-11-01", i).slice(0, 7)))) / 100);
+const depositsOf = (memberId: string) => transactions.filter((t) => t.status !== "reversed").filter((t) => t.memberId === memberId && t.type === "deposit");
+const byMonth = (txs: Tx[]) => monthLabels.map((_, i) => sum(txs.filter((t) => t.date.startsWith(addMonths("2025-11-01", i).slice(0, 7)))) / 100);
+const myPut = sum(depositsOf(ME));
 const goal = (groupId: string, id: string) => groups.find((g) => g.id === groupId)!.goals.find((x) => x.id === id)!;
 const base = (groupId: string, id: string) => { const g = goal(groupId, id); return { id, name: g.name, type: g.type, progress: g.progress, metric: g.metric }; };
 
-export const myActivity: MyGroupActivity[] = [
+const bernzActivity: MyGroupActivity[] = [
   {
     groupId: "family", last: "Yesterday, 9:14 AM",
     goals: [
@@ -148,10 +167,10 @@ export const myActivity: MyGroupActivity[] = [
         ...base("family", "car-credit"),
         stats: [
           { label: "You put in", value: peso(myPut), hint: `${Math.round((myPut / totals.contributions) * 100)}% of all deposits, incl. pending` },
-          { label: "Installments paid", value: `${paidCount}/60`, hint: "Paid to the lender monthly" },
+          { label: "Installments paid", value: `${totals.installmentsDone}/60`, hint: "Paid to the lender monthly" },
           { label: "Next due", value: fmtDate(nextDue), hint: peso(loan.monthly) },
         ],
-        chart: { title: "Your deposits per month", unit: "peso", data: series(myByMonth) },
+        chart: { title: "Your deposits per month", unit: "peso", data: series(byMonth(depositsOf(ME))) },
         recent: [["Deposit of ₱12,000.00 recorded", "Yesterday, 9:14 AM"], ["Installment 11/60 paid to the lender", "Oct 5"], ["Confirmed Billy's imported deposit", "Oct 3"]],
       },
       {
@@ -204,11 +223,10 @@ export const myActivity: MyGroupActivity[] = [
 ];
 
 // --- Group overview details per group (Family figures come from the ledger above) ---
-export type GroupDetail = { funds: number; invite: string; others: string[]; ownerIfYouAreMember: string; activity: [string, string, string][] };
+export type GroupDetail = { funds: number; invite: string; activity: [string, string, string][] };
 export const groupDetails: Record<string, GroupDetail> = {
   family: {
     funds: totals.available, invite: "FAM-7K2Q-DEMO",
-    others: ["Babylyn", "Billy"], ownerIfYouAreMember: "Babylyn",
     activity: [
       ["Bernz", "added a deposit of ₱12,000.00 to Car Credit", "Yesterday, 9:14 AM"],
       ["Bernz", "confirmed Babylyn's imported deposit", "2 days ago"],
@@ -218,7 +236,6 @@ export const groupDetails: Record<string, GroupDetail> = {
   },
   friends: {
     funds: 6_800_000, invite: "FRN-3M8P-DEMO",
-    others: ["Carla", "Dino", "Ella", "Migs"], ownerIfYouAreMember: "Carla",
     activity: [
       ["Carla", "recorded Bernz's day 12 check-in", "Today, 6:30 AM"],
       ["Carla", "recorded Ella's deposit of ₱2,000.00 to Vacation Fund", "Yesterday"],
@@ -228,8 +245,55 @@ export const groupDetails: Record<string, GroupDetail> = {
   },
 };
 
-// Members list for the "view as" role. Bernz is the Owner unless you preview as a Member; the System Admin is never in this list.
-export const rosterFor = (d: GroupDetail, viewAs: ViewAs): { name: string; role: GroupRole; you: boolean }[] => [
-  { name: "Bernz", role: viewAs === "member" ? "Member" : "Owner", you: viewAs !== "admin" },
-  ...d.others.map((name) => ({ name, role: (viewAs === "member" && name === d.ownerIfYouAreMember ? "Owner" : "Member") as GroupRole, you: false })),
+// Babylyn (User 2): a Member of Family only; she joined Grocery Budget, which Bernz did not.
+const babylynPut = sum(depositsOf("babylyn"));
+const babylynActivity: MyGroupActivity[] = [
+  {
+    groupId: "family", last: "Oct 20",
+    goals: [
+      {
+        ...base("family", "car-credit"),
+        stats: [
+          { label: "You put in", value: peso(babylynPut), hint: `${Math.round((babylynPut / totals.contributions) * 100)}% of all deposits, incl. pending` },
+          { label: "Installments paid", value: `${totals.installmentsDone}/60`, hint: "Paid to the lender by the Owner" },
+          { label: "Next due", value: fmtDate(nextDue), hint: peso(loan.monthly) },
+        ],
+        chart: { title: "Your deposits per month", unit: "peso", data: series(byMonth(depositsOf("babylyn"))) },
+        recent: [["Deposit of ₱8,000.00 recorded by Bernz", "Oct 20"], ["Comprehensive insurance paid (₱18,500.00)", "Jan 12"]],
+      },
+      {
+        ...base("family", "emergency-fund"),
+        stats: [
+          { label: "You put in", value: peso(4_200_000), hint: "33% of the fund" },
+          { label: "Fund so far", value: peso(12_600_000), hint: `of ${peso(30_000_000)} target` },
+          { label: "Deposits you made", value: "7", hint: "Since April" },
+        ],
+        chart: { title: "Your deposits per month", unit: "peso", data: series([0, 0, 0, 0, 0, 6000, 6000, 6000, 6000, 6000, 6000, 6000]) },
+        recent: [["Deposit of ₱6,000.00 recorded by Bernz", "Oct 20"], ["Deposit of ₱6,000.00 recorded by Bernz", "Sep 20"]],
+      },
+      {
+        ...base("family", "family-fitness"),
+        stats: [
+          { label: "Workouts this month", value: "4", hint: "Logged for you" },
+          { label: "This week", value: "2 of 5", hint: "Weekly target" },
+          { label: "Streak", value: "2 weeks", hint: "Weeks with at least 3 workouts" },
+        ],
+        chart: { title: "Your workouts per month", unit: "count", data: series([0, 0, 0, 0, 0, 0, 1, 3, 4, 3, 5, 4]) },
+        recent: [["Strength session logged by Bernz", "Oct 20"]],
+      },
+      {
+        ...base("family", "grocery-budget"),
+        stats: [
+          { label: "You put in this month", value: peso(450_000), hint: "Half of the budget used so far" },
+          { label: "Months paid", value: "5 of 5", hint: "Since June" },
+          { label: "Budget this month", value: peso(900_000), hint: `of ${peso(1_200_000)}` },
+        ],
+        chart: { title: "Your grocery share per month", unit: "peso", data: series([0, 0, 0, 0, 0, 0, 0, 4500, 4500, 4500, 4500, 4500]) },
+        recent: [["Grocery share of ₱4,500.00 recorded by Bernz", "Oct 1"], ["Grocery share of ₱4,500.00 recorded by Bernz", "Sep 1"]],
+      },
+    ],
+  },
 ];
+
+/** Dashboard data for one person: their groups, and inside each a small dashboard per goal they joined. */
+export const myActivityFor = (name: string): MyGroupActivity[] => (name === "Bernz" ? bernzActivity : name === "Babylyn" ? babylynActivity : []);
