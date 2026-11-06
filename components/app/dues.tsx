@@ -3,7 +3,7 @@
 import { CalendarClock, CircleCheck } from "lucide-react";
 import { StatusBadge, toneText } from "@/components/app/primitives";
 import { useGoalSubmissions, type Submission } from "@/components/app/records";
-import { CAR_CREDIT, useCarCredit } from "./car-credit";
+import { useCarCredit } from "./car-credit";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -12,14 +12,14 @@ import { addMonths, fmtDate, peso } from "@/lib/money";
 import { cn } from "@/lib/utils";
 import { useMe, useViewAs } from "./view-as";
 import { LastReminded, NotifyMembers } from "./notify";
+import { CAR_CREDIT, FIRST_MONTH, LOCALE } from "@/lib/constants";
 
 // Car Credit only. Each member owes their monthly share on the 1st. Shares count from the first deposit month
 // through the coming month. Approved member submissions and Owner-added deposits count as paid, in the month they are dated.
-const FIRST_MONTH = "2025-11";
 const ym = (d: string) => d.slice(0, 7);
 export const comingMonth = ym(addMonths(ym(TODAY) + "-01", 1));
 const monthsUntil = (last: string) => { const out: string[] = []; for (let m = FIRST_MONTH; m <= last; m = ym(addMonths(m + "-01", 1))) out.push(m); return out; };
-const monthName = (m: string, year = false) => new Date(m + "-01T00:00:00Z").toLocaleDateString("en-PH", { month: "short", year: year ? "numeric" : undefined, timeZone: "UTC" });
+const monthName = (m: string, year = false) => new Date(m + "-01T00:00:00Z").toLocaleDateString(LOCALE, { month: "short", year: year ? "numeric" : undefined, timeZone: "UTC" });
 const isDeposit = (r: Submission) => r.kind ? r.kind === "deposit" : r.direction === "in";
 
 export type Due = {
@@ -32,7 +32,6 @@ export type Due = {
   missed: string[];      // those months, e.g. ["Mar", "Jul"]
   confirming: number;    // deposits waiting for confirmation (sample data)
   awaiting: number;      // submissions waiting for the Owner's approval
-  thisMonth: { paid: number; confirming: boolean }; // what was paid in the current month, against the share
 };
 
 export const label = (k: string) => monthName(k, k.slice(0, 4) !== ym(TODAY).slice(0, 4));
@@ -84,7 +83,6 @@ function dues(transactions: Tx[], submissions: Submission[], shares: Record<stri
       behind: missed.reduce((s, o) => s + o.amount, 0),
       missed: missed.map((o) => label(o.month)),
       confirming, awaiting,
-      thisMonth: { paid: byMonth.get(ym(TODAY)) ?? 0, confirming: pendingMonths.has(ym(TODAY)) },
     };
   });
 }
@@ -94,6 +92,9 @@ export function useDues() {
   const { transactions, loan } = useCarCredit();
   return dues(transactions, useGoalSubmissions(CAR_CREDIT), loan.shares);
 }
+
+/** What a member still has to pay: the coming month's share less the advance and what they paid, plus earlier months owed. */
+export const toPay = (d: Due) => d.share - d.paid + d.behind;
 
 const shareDue = comingMonth + "-01";
 const daysTo = (iso: string) => Math.round((Date.parse(iso) - Date.parse(TODAY)) / 86_400_000);
@@ -105,7 +106,7 @@ export function DuesCard() {
   const owner = useViewAs() === "owner";
   const me = useMe();
   const open = list.filter((d) => d.status !== "Paid");
-  const toCollect = list.reduce((s, d) => s + d.share - d.paid, 0);
+  const toCollect = list.reduce((s, d) => s + toPay(d), 0);
   return (
     <Card>
       <CardHeader>
@@ -114,21 +115,29 @@ export function DuesCard() {
           {owner && <NotifyMembers dues={list} month={comingMonth} />}
         </div>
         <CardDescription>
-          Each member&apos;s share is due {fmtDate(shareDue)} (in {daysTo(shareDue)} days), before the {peso(loan.monthly)} installment on {fmtDate(nextDue)}. Every member gets an automatic reminder in their bell 10 days before (set in Group setup → Jobs){owner && "; use Notify to remind someone now"}.
+          Each member&apos;s share is due {fmtDate(shareDue)} (in {daysTo(shareDue)} days), before the {peso(loan.monthly)} installment on {fmtDate(nextDue)}. Paying above the share goes to an advance, which is deducted from the next share. Every member gets an automatic reminder in their bell 10 days before (set in Group setup → Jobs){owner && "; use Notify to remind someone now"}.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
         <p className={cn("flex items-center gap-2 text-sm font-medium", open.length ? toneText.warning : toneText.success)}>
           {open.length ? <CalendarClock className="size-4" aria-hidden /> : <CircleCheck className="size-4" aria-hidden />}
-          {open.length ? `${open.length} of ${list.length} not yet paid · ${peso(toCollect)} still to collect` : "Everyone has paid this month's share"}
+          {open.length ? `${open.length} of ${list.length} not yet paid · ${peso(toCollect)} still to collect` : toCollect ? `Everyone has paid this month's share · ${peso(toCollect)} still owed from earlier months` : "Everyone has paid this month's share"}
         </p>
         <Table>
-          <TableHeader><TableRow><TableHead>Member</TableHead><TableHead className="text-right">Share</TableHead><TableHead className="text-right">Paid</TableHead><TableHead>Status</TableHead><TableHead>Earlier months</TableHead>{owner && <TableHead><span className="sr-only">Actions</span></TableHead>}</TableRow></TableHeader>
+          <TableHeader><TableRow><TableHead>Member</TableHead><TableHead className="text-right">Share</TableHead><TableHead className="text-right" title="Paid above their share in earlier months; it is deducted from this share">Advance</TableHead><TableHead className="text-right">Paid</TableHead><TableHead className="text-right">To pay</TableHead><TableHead>Status</TableHead><TableHead>Earlier months</TableHead>{owner && <TableHead><span className="sr-only">Actions</span></TableHead>}</TableRow></TableHeader>
           <TableBody>{list.map((d) => (
             <TableRow key={d.id}>
               <TableCell><span className="flex items-center gap-2 font-medium"><Avatar size="sm"><AvatarFallback>{d.name.slice(0, 2).toUpperCase()}</AvatarFallback></Avatar>{d.name}</span></TableCell>
               <TableCell className="num text-right">{peso(d.share)}</TableCell>
-              <TableCell className="num text-right">{peso(d.paid)}{d.fromAdvance > 0 && <span className="block text-xs font-normal text-muted-foreground">{peso(d.fromAdvance)} from advance</span>}</TableCell>
+              <TableCell className={cn("num text-right", d.fromAdvance ? toneText.success : "text-muted-foreground")}>
+                {d.fromAdvance ? `−${peso(d.fromAdvance)}` : peso(0)}
+                {d.advance > d.fromAdvance && <span className="block text-xs font-normal text-muted-foreground">{peso(d.advance - d.fromAdvance)} left for later</span>}
+              </TableCell>
+              <TableCell className="num text-right">{peso(d.paid - d.fromAdvance)}</TableCell>
+              <TableCell className={cn("num text-right font-semibold", toPay(d) ? "" : toneText.success)}>
+                {peso(toPay(d))}
+                {d.behind > 0 && d.status !== "Paid" && <span className="block text-xs font-normal text-muted-foreground">{peso(d.share - d.paid)} + {peso(d.behind)} behind</span>}
+              </TableCell>
               <TableCell>
                 <StatusBadge status={d.status} />
                 {d.awaiting > 0 && <span className="mt-0.5 block text-xs text-muted-foreground">{peso(d.awaiting)} waiting for approval</span>}
@@ -168,55 +177,5 @@ export function DuesHint() {
         {behind.length > 0 && <span className={toneText.danger}> · {member ? `behind ${peso(list[0].behind)}` : `${behind.length} behind`}</span>}
       </span>
     </p>
-  );
-}
-
-/**
- * Every member's payment status, for everyone in the group to monitor: did they pay this month's share exactly,
- * more (the extra goes to their advance) or less, and are they ahead or behind overall. No totals or transactions.
- */
-export function GroupStatusCard() {
-  const list = useDues();
-  const me = useMe();
-  const now = ym(TODAY);
-  const month = (d: Due) => {
-    const { paid, confirming } = d.thisMonth;
-    if (confirming) return "Waiting for confirmation";
-    if (!paid) return "Not paid";
-    return paid > d.share ? "Overpaid" : paid < d.share ? "Short" : "Paid";
-  };
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Group payment status</CardTitle>
-        <CardDescription>What each member paid this month against their target. Advance is the difference: paid ₱15,000 on a ₱10,000 target is a ₱5,000 advance.</CardDescription>
-      </CardHeader>
-      <CardContent className="overflow-x-auto">
-        <Table>
-          <TableHeader><TableRow><TableHead>Member</TableHead><TableHead>{monthName(now)} share</TableHead><TableHead className="text-right">Target</TableHead><TableHead className="text-right">Paid</TableHead><TableHead className="text-right">Advance</TableHead><TableHead>Overall</TableHead></TableRow></TableHeader>
-          <TableBody>{list.map((d) => {
-            const status = month(d);
-            // Advance = paid - target for this month; below zero it is what is still missing.
-            const diff = d.thisMonth.confirming ? 0 : d.thisMonth.paid - d.share;
-            return (
-              <TableRow key={d.id} className={cn(d.name === me && "bg-primary/5")}>
-                <TableCell><span className="flex items-center gap-2 font-medium"><Avatar size="sm"><AvatarFallback>{d.name.slice(0, 2).toUpperCase()}</AvatarFallback></Avatar>{d.name}{d.name === me && <span className="text-xs font-normal text-muted-foreground">(you)</span>}</span></TableCell>
-                <TableCell><StatusBadge status={status} /></TableCell>
-                <TableCell className="num text-right">{peso(d.share)}</TableCell>
-                <TableCell className="num text-right">{d.thisMonth.confirming ? <span className="text-muted-foreground">{peso(d.confirming)} pending</span> : peso(d.thisMonth.paid)}</TableCell>
-                <TableCell className={cn("num text-right font-medium", diff > 0 ? toneText.success : diff < 0 ? toneText.warning : "text-muted-foreground")}>
-                  {diff > 0 ? "+" : diff < 0 ? "−" : ""}{peso(Math.abs(diff))}
-                  {diff < 0 && <span className="block text-xs font-normal text-muted-foreground">short</span>}
-                </TableCell>
-                <TableCell className="text-sm">
-                  {d.behind > 0 ? <span className={cn("font-medium", toneText.danger)}>Behind {peso(d.behind)}</span>
-                    : <span className="text-muted-foreground">Up to date</span>}
-                </TableCell>
-              </TableRow>
-            );
-          })}</TableBody>
-        </Table>
-      </CardContent>
-    </Card>
   );
 }

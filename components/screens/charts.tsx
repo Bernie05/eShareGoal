@@ -4,8 +4,9 @@ import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, XAxis, YAxis } from 
 import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
 import { members, type GoalPoint } from "@/lib/demo-data";
 import { useCarCredit } from "@/components/app/car-credit";
+import { LOCALE } from "@/lib/constants";
 
-const peso0 = (v: number) => "₱" + v.toLocaleString("en-PH");
+const peso0 = (v: number) => "₱" + v.toLocaleString(LOCALE);
 const axis = { tickLine: false, axisLine: false, tickMargin: 8 } as const;
 
 const memberConfig: ChartConfig = Object.fromEntries(members.map((m) => [m.id, { label: m.name, color: m.color }]));
@@ -62,8 +63,13 @@ export function ByMemberChart() {
   );
 }
 
+interface MyGoalChartProps {
+  data: GoalPoint[];
+  unit: "peso" | "count";
+  label: string;
+}
 /** One goal's monthly series for the current user: pesos for money goals, counts for progress goals. */
-export function MyGoalChart({ data, unit, label }: { data: GoalPoint[]; unit: "peso" | "count"; label: string }) {
+export function MyGoalChart({ data, unit, label }: MyGoalChartProps) {
   const config: ChartConfig = { value: { label, color: unit === "peso" ? "var(--chart-1)" : "var(--chart-2)" } };
   return (
     <ChartContainer config={config} className="h-48 w-full" role="img" aria-label={label}>
@@ -82,7 +88,12 @@ export function MyGoalChart({ data, unit, label }: { data: GoalPoint[]; unit: "p
 const personConfig = (people: string[]): ChartConfig => Object.fromEntries(people.map((p, i) => [p, { label: p, color: `var(--chart-${(i % 5) + 1})` }]));
 const key = (p: string) => p.replace(/\W/g, "");
 
-export function SavingsMonthlyChart({ data, people, goal }: { data: Record<string, string | number>[]; people: string[]; goal: string }) {
+interface SavingsMonthlyChartProps {
+  data: Record<string, string | number>[];
+  people: string[];
+  goal: string;
+}
+export function SavingsMonthlyChart({ data, people, goal }: SavingsMonthlyChartProps) {
   const config = Object.fromEntries(people.map((p, i) => [key(p), { label: p, color: `var(--chart-${(i % 5) + 1})` }])) as ChartConfig;
   const rows = data.map((r) => Object.fromEntries(Object.entries(r).map(([k, v]) => [k === "month" ? k : key(k), v])));
   return (
@@ -99,7 +110,11 @@ export function SavingsMonthlyChart({ data, people, goal }: { data: Record<strin
   );
 }
 
-export function SavingsShareChart({ data, goal }: { data: { name: string; total: number }[]; goal: string }) {
+interface SavingsShareChartProps {
+  data: { name: string; total: number }[];
+  goal: string;
+}
+export function SavingsShareChart({ data, goal }: SavingsShareChartProps) {
   const config = personConfig(data.map((d) => d.name));
   const rows = data.map((d) => ({ id: d.name, value: d.total / 100 }));
   return (

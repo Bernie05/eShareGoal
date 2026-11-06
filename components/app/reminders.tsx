@@ -12,21 +12,21 @@ import { useNudges } from "./nudges";
 import { ACCOUNTS, SAMPLE_ROSTER } from "@/lib/accounts";
 import { TODAY } from "@/lib/demo-data";
 import { useCarCredit } from "./car-credit";
-import { GROUP_SETTINGS_COOKIE, jobsFor, parseGroupSettings, settingsFor } from "@/lib/group-settings";
+import { jobsFor, parseGroupSettings, settingsFor } from "@/lib/group-settings";
 import { fmtDate, peso } from "@/lib/money";
 import { cn } from "@/lib/utils";
+import { BASE_PATH, CAR_CREDIT, GROUP_SETTINGS_COOKIE, LOCALE, REMIND_DAYS, STORAGE, STORAGE_EVENTS } from "@/lib/constants";
 
 // Payment reminders from the Car Credit schedule. Every member of the group gets them (the Owner too), from
 // REMIND_DAYS before their monthly share is due, while the goal's "Due date reminders" job is on.
 // Reminders the Owner sends by hand (Notify) always arrive, whatever the job or the date.
 // Which ones were read is kept per account in this browser.
-const REMIND_DAYS = 10;
 const GROUP = "family";
-const href = "/design-preview/loan?goal=car-credit";
+const href = `${BASE_PATH}/loan?goal=${CAR_CREDIT}`;
 const shareDue = comingMonth + "-01";
 const daysTo = (iso: string) => Math.round((Date.parse(iso) - Date.parse(TODAY)) / 86_400_000);
 const inDays = (iso: string) => { const n = daysTo(iso); return n <= 0 ? "due today" : n === 1 ? "tomorrow" : `in ${n} days`; };
-const monthName = new Date(shareDue + "T00:00:00Z").toLocaleDateString("en-PH", { month: "long", timeZone: "UTC" });
+const monthName = new Date(shareDue + "T00:00:00Z").toLocaleDateString(LOCALE, { month: "long", timeZone: "UTC" });
 
 type Reminder = { id: string; Icon: typeof BellRing; title: string; body: string; tone?: "danger" };
 
@@ -56,8 +56,8 @@ export function useReminders(): Reminder[] {
     : nudges.findIndex((x) => x.to === me && !x.kind && x.month === n.month) === i && !(n.month === comingMonth && mine?.status === "Paid")));
   const out: Reminder[] = sent.map((n) => ({
     id: `nudge-${n.id}`, Icon: n.kind === "update" ? Pencil : Megaphone,
-    title: n.kind === "update" ? `${n.from} updated the Car Credit details` : `${n.from} reminded you to pay your ${new Date(n.month + "-01T00:00:00Z").toLocaleDateString("en-PH", { month: "long", timeZone: "UTC" })} share`,
-    body: `${n.message} · ${new Date(n.sent).toLocaleString("en-PH", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}`,
+    title: n.kind === "update" ? `${n.from} updated the Car Credit details` : `${n.from} reminded you to pay your ${new Date(n.month + "-01T00:00:00Z").toLocaleDateString(LOCALE, { month: "long", timeZone: "UTC" })} share`,
+    body: `${n.message} · ${new Date(n.sent).toLocaleString(LOCALE, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}`,
   }));
   if (!on || daysTo(shareDue) > REMIND_DAYS) return out;
   if (mine && mine.status !== "Paid") out.push({
@@ -85,8 +85,8 @@ export function useReminders(): Reminder[] {
 }
 
 // Read reminder ids, per account, in localStorage.
-const EVENT = "esg-reminders-change";
-const KEY = (account: string) => `esg-reminders-read:${account}`;
+const EVENT = STORAGE_EVENTS.reminders;
+const KEY = STORAGE.remindersRead;
 const subscribe = (cb: () => void) => { window.addEventListener(EVENT, cb); window.addEventListener("storage", cb); return () => { window.removeEventListener(EVENT, cb); window.removeEventListener("storage", cb); }; };
 function useReadIds() {
   const account = useAccount();

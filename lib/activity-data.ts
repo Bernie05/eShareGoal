@@ -1,9 +1,9 @@
 import { groups, members, transactions, type Tx } from "./demo-data";
-import { addMonths } from "./money";
 import { sampleGroupsFor, type Account } from "./accounts";
+import { CAR_CREDIT } from "./constants";
 
 // FICTIONAL activity log across every group: one row per thing that happened, with who recorded it and its audit trail.
-// Group Owners record everything (Family: Bernz, Friends: Carla); imports are confirmed by the Owner.
+// Group Owners record everything (Family: Bernz); imports are confirmed by the Owner.
 export type ActivityKind = "Deposit" | "Loan payment" | "Expense" | "Withdrawal" | "Progress log" | "Import" | "Goal change" | "Member change";
 export type ActivityStatus = "Confirmed" | "Pending" | "Reversed" | "Rejected" | "Duplicate" | "Done";
 export type Activity = {
@@ -30,33 +30,16 @@ const fromLedger = transactions.map((t, i) => {
   const audit = [`${t.date} · ${imported ? `Found in a ${t.method} email, confirmed by Bernz` : `Recorded by Bernz (${t.method})`}`];
   if (t.status === "pending") audit.push(`${t.date} · Waiting for the bank email that confirms it`);
   if (t.status === "reversed") audit.push("2026-08-03 · Reversed by Bernz: entered twice. The original row is kept, a reversal row cancels it");
-  return row({ at, groupId: "family", goalId: "car-credit", kind: kindOf[t.type], subject, by: "Bernz", amount: t.amount, detail: t.notes, status: statusOf[t.status], source: imported ? "Imported" : "Manual", ref: t.ref ?? null, audit });
+  return row({ at, groupId: "family", goalId: CAR_CREDIT, kind: kindOf[t.type], subject, by: "Bernz", amount: t.amount, detail: t.notes, status: statusOf[t.status], source: imported ? "Imported" : "Manual", ref: t.ref ?? null, audit });
 });
 
-const monthly = (from: string, count: number, make: (date: string, i: number) => Activity[]) =>
-  Array.from({ length: count }, (_, i) => make(addMonths(from, i), i)).flat();
-
 const other: Activity[] = [
-  // Family > Emergency Fund: all three, Apr-Oct (₱126,000)
-  ...monthly("2026-04-20", 7, (d, i) => ["Bernz", "Babylyn", "Billy"].map((who) => row({ at: `${d}T19:05`, groupId: "family", goalId: "emergency-fund", kind: "Deposit", subject: who, by: "Bernz", amount: 600_000, detail: "Monthly share", status: "Confirmed", source: "Manual", ref: `DEMO-EF${who[1].toUpperCase()}${String(i + 1).padStart(2, "0")}`, audit: [`${d} · Recorded by Bernz (BPI Transfer)`] }))),
-  // Family > Grocery Budget: Babylyn and Billy only (Bernz did not join)
-  ...monthly("2026-06-01", 5, (d, i) => ["Babylyn", "Billy"].map((who) => row({ at: `${d}T10:30`, groupId: "family", goalId: "grocery-budget", kind: "Deposit", subject: who, by: "Bernz", amount: 450_000, detail: "Grocery share", status: i === 4 && who === "Billy" ? "Pending" : "Confirmed", source: "Manual", ref: `DEMO-GR${who[1].toUpperCase()}${i + 1}`, audit: [`${d} · Recorded by Bernz (GCash)`] }))),
-  // Family > Family Fitness
-  ...["2026-10-22", "2026-10-20", "2026-10-15"].map((d, i) => row({ at: `${d}T06:30`, groupId: "family", goalId: "family-fitness", kind: "Progress log", subject: ["Billy", "Babylyn", "Bernz"][i], by: "Bernz", amount: null, detail: ["30-minute run", "Strength session", "Swim, 1 km"][i], status: "Confirmed", source: "Manual", ref: null, audit: [`${d} · Logged by Bernz`] })),
-  // Friends > Vacation Fund: four members, Feb-Oct; Dino from April (₱68,000)
-  ...monthly("2026-02-15", 9, (d, i) => ["Bernz", "Carla", "Dino", "Ella"].filter((who) => who !== "Dino" || i >= 2).map((who) => row({ at: `${d}T12:00`, groupId: "friends", goalId: "vacation-fund", kind: "Deposit", subject: who, by: "Carla", amount: 200_000, detail: "Monthly share", status: i === 8 && who === "Dino" ? "Pending" : "Confirmed", source: i % 3 === 0 ? "Imported" : "Manual", ref: `DEMO-VF${who[0]}${i + 1}`, audit: [`${d} · Recorded by Carla`] }))),
-  // Friends > 30-Day Fitness Challenge
-  ...["Bernz", "Dino", "Ella"].map((who, i) => row({ at: `2026-10-25T0${6 + i}:30`, groupId: "friends", goalId: "fitness-30", kind: "Progress log", subject: who, by: "Carla", amount: null, detail: "Day 12 check-in", status: "Confirmed", source: "Manual", ref: null, audit: ["2026-10-25 · Logged by Carla"] })),
-  // Friends > Book Club (Bernz did not join)
-  row({ at: "2026-10-05T20:00", groupId: "friends", goalId: "book-club", kind: "Goal change", subject: null, by: "Carla", amount: null, detail: "Goal paused: not enough readers this month", status: "Done", source: "Manual", ref: null, audit: ["2026-10-05 · Status Active → Paused by Carla"] }),
   // Imports that need a look
-  row({ at: "2026-10-24T08:12", groupId: "family", goalId: "car-credit", kind: "Import", subject: "Bernz", by: "Gmail import", amount: 1_200_000, detail: "Same reference as an earlier email; not recorded twice", status: "Duplicate", source: "Imported", ref: "DEMO-BE2410", audit: ["2026-10-24 · Email msg-demo-7f3b matched DEMO-BE2410, already recorded", "2026-10-24 · Marked duplicate automatically"] }),
-  row({ at: "2026-10-23T17:40", groupId: "family", goalId: "car-credit", kind: "Import", subject: null, by: "Gmail import", amount: 800_000, detail: "Member unclear: account suffix 7710 is on both Babylyn's and Billy's rules", status: "Pending", source: "Imported", ref: "DEMO-XX0991", audit: ["2026-10-23 · Email msg-demo-2c91 found", "2026-10-23 · Waiting for the Owner to choose the member"] }),
+  row({ at: "2026-10-24T08:12", groupId: "family", goalId: CAR_CREDIT, kind: "Import", subject: "Bernz", by: "Gmail import", amount: 1_200_000, detail: "Same reference as an earlier email; not recorded twice", status: "Duplicate", source: "Imported", ref: "DEMO-BE2410", audit: ["2026-10-24 · Email msg-demo-7f3b matched DEMO-BE2410, already recorded", "2026-10-24 · Marked duplicate automatically"] }),
+  row({ at: "2026-10-23T17:40", groupId: "family", goalId: CAR_CREDIT, kind: "Import", subject: null, by: "Gmail import", amount: 800_000, detail: "Member unclear: account suffix 7710 is on both Babylyn's and Billy's rules", status: "Pending", source: "Imported", ref: "DEMO-XX0991", audit: ["2026-10-23 · Email msg-demo-2c91 found", "2026-10-23 · Waiting for the Owner to choose the member"] }),
   row({ at: "2026-10-19T09:02", groupId: "family", goalId: null, kind: "Import", subject: null, by: "Gmail import", amount: null, detail: "Amount could not be read from the email body", status: "Rejected", source: "Imported", ref: null, audit: ["2026-10-19 · Email msg-demo-be05 could not be parsed", "2026-10-19 · Rejected by Bernz"] }),
   // Group-level changes
-  row({ at: "2026-06-01T09:00", groupId: "family", goalId: "grocery-budget", kind: "Goal change", subject: null, by: "Bernz", amount: null, detail: "Goal created: ₱12,000 every month", status: "Done", source: "Manual", ref: null, audit: ["2026-06-01 · Created by Bernz"] }),
   row({ at: "2026-03-02T11:15", groupId: "family", goalId: null, kind: "Member change", subject: "Babylyn", by: "Bernz", amount: null, detail: "Role changed: Administrator → Member", status: "Done", source: "Manual", ref: null, audit: ["2026-03-02 · Role changed by Bernz"] }),
-  row({ at: "2026-02-04T18:20", groupId: "friends", goalId: null, kind: "Member change", subject: "Migs", by: "Carla", amount: null, detail: "Joined with invite code FRN-3M8P-DEMO", status: "Done", source: "Manual", ref: null, audit: ["2026-02-04 · Invite accepted"] }),
 ];
 
 export const activityLog: Activity[] = [...fromLedger, ...other].sort((a, b) => b.at.localeCompare(a.at));
@@ -71,36 +54,3 @@ export function visibleActivity(account: Account) {
   return activityLog.filter((a) => groupIds.has(a.groupId) && (a.goalId ? joined.has(a.goalId) : true));
 }
 
-// --- Savings goals (shared money): the plan per goal; every figure below is computed from the activity log ---
-export type SavingsPlan =
-  | { kind: "target"; target: number; by: string; monthsLeft: number; about: string; milestones: [string, "Done" | "Upcoming", string][] }
-  | { kind: "monthly"; target: number; about: string }; // a budget that refills every month
-export const savingsPlans: Record<string, SavingsPlan> = {
-  "emergency-fund": { kind: "target", target: 30_000_000, by: "Dec 31, 2027", monthsLeft: 14, about: "Shared savings for the family.", milestones: [["₱50,000 saved", "Done", "Jun 2026"], ["₱100,000 saved", "Done", "Sep 2026"], ["₱200,000 saved", "Upcoming", "Apr 2027"], ["₱300,000 saved", "Upcoming", "Dec 2027"]] },
-  "grocery-budget": { kind: "monthly", target: 1_200_000, about: "One shared budget for the weekly grocery run." },
-  "vacation-fund": { kind: "target", target: 10_000_000, by: "Apr 30, 2027", monthsLeft: 6, about: "Barkada trip fund.", milestones: [["₱25,000 saved", "Done", "May 2026"], ["₱50,000 saved", "Done", "Aug 2026"], ["₱100,000 saved", "Upcoming", "Apr 2027"]] },
-};
-
-const THIS_MONTH = "2026-10";
-export function savingsGoal(id: string) {
-  const deposits = activityLog.filter((a) => a.goalId === id && a.kind === "Deposit" && a.status !== "Reversed"); // pending counts (decision)
-  const total = (xs: Activity[]) => xs.reduce((s, a) => s + (a.amount ?? 0), 0);
-  const people = [...new Set(deposits.map((a) => a.subject!))].sort();
-  const months = Array.from({ length: 12 }, (_, i) => addMonths("2025-11-01", i).slice(0, 7));
-  return {
-    saved: total(deposits),
-    thisMonth: total(deposits.filter((a) => a.at.startsWith(THIS_MONTH))),
-    pending: deposits.filter((a) => a.status === "Pending").length,
-    activeMonths: new Set(deposits.map((a) => a.at.slice(0, 7))).size,
-    people,
-    byMember: people.map((name) => {
-      const mine = deposits.filter((a) => a.subject === name);
-      return { name, total: total(mine), count: mine.length, latest: mine[0]?.at.slice(0, 10) ?? "", pending: mine.filter((a) => a.status === "Pending").length };
-    }),
-    monthly: months.map((m) => ({
-      month: new Date(`${m}-01T00:00:00Z`).toLocaleDateString("en-PH", { month: "short", timeZone: "UTC" }),
-      ...Object.fromEntries(people.map((p) => [p, total(deposits.filter((a) => a.subject === p && a.at.startsWith(m))) / 100])),
-    })),
-    recent: deposits.slice(0, 5),
-  };
-}

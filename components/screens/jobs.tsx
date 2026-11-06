@@ -16,28 +16,36 @@ import { NativeSelect } from "@/components/ui/native-select";
 import { Switch } from "@/components/ui/switch";
 import { StatusBadge } from "@/components/app/primitives";
 import { JOBS, jobsFor, lockedFor, removedJobs, type JobId, type JobSetting, type Schedule, type SetupSettings, type Target } from "@/lib/group-settings";
-import { EMAIL_JOBS, MAX_BODY, PLACEHOLDERS, renderEmail, type EmailTemplate } from "@/lib/email-templates";
+import { EMAIL_JOBS, PLACEHOLDERS, renderEmail, type EmailTemplate } from "@/lib/email-templates";
 import { useEmailTemplates } from "@/components/app/email-store";
 import { useSendEmail } from "@/components/app/view-as";
+import { overdueRunAction } from "@/app/actions/jobs";
+import { peso } from "@/lib/money";
+import type { OverdueLine } from "@/lib/server/overdue";
 import { EmailPreview } from "./email-templates";
 import { cron, human, ScheduleFields } from "./schedule";
 import { ImportJobs, type ImportGoal } from "./import-jobs";
+import { CAR_CREDIT_ENTRY, MAX_BODY } from "@/lib/constants";
 
 // FICTIONAL run history per goal. Only Family's Car Credit has run anything in the sample data.
 const SAMPLE_RUNS: Record<string, { last: Partial<Record<JobId, [string, boolean]>>; runs: [string, string, boolean, string][] }> = {
-  "family~car-credit": {
-    last: { "due-reminders": ["Oct 25, 9:00 AM", true], "overdue-check": ["Oct 26, 12:00 AM", true], "import-cleanup": ["Oct 19, 3:00 AM", true], "monthly-summary": ["Oct 1, 7:00 AM", false] },
+  [CAR_CREDIT_ENTRY]: {
+    last: { "due-reminders": ["Oct 25, 9:00 AM", true], "overdue-check": ["Oct 26, 12:00 AM", true] },
     runs: [
       ["Oct 26, 12:00 AM", "Overdue check", true, "0 installments overdue"],
       ["Oct 25, 9:00 AM", "Due date reminders", true, "3 reminders sent to Bernz, Babylyn and Billy (Nov share due Nov 1, installment 12/60 due Nov 5)"],
       ["Oct 25, 8:00 AM", "Bank transfers (Gmail import)", true, "2 candidates, 1 duplicate skipped"],
       ["Oct 19, 8:00 AM", "Bank transfers (Gmail import)", false, "1 email could not be parsed"],
-      ["Oct 1, 7:00 AM", "Monthly summary email", false, "Email service did not respond (simulated); will retry next run"],
     ],
   },
 };
 
-function EditSchedule({ name, schedule, onSave }: { name: string; schedule: Schedule; onSave: (s: Schedule) => void }) {
+interface EditScheduleProps {
+  name: string;
+  schedule: Schedule;
+  onSave: (s: Schedule) => void;
+}
+function EditSchedule({ name, schedule, onSave }: EditScheduleProps) {
   const [open, setOpen] = useState(false);
   const [s, setS] = useState(schedule);
   return (
@@ -62,9 +70,15 @@ type Mail = Pick<EmailTemplate, "subject" | "format" | "body" | "images">;
 const mailOf = (j: Pick<CustomJob, "subject" | "body">, t: EmailTemplate): Mail => ({ subject: j.subject ?? t.subject, body: j.body ?? t.body, format: t.format, images: t.images });
 const TO = { all: "Every member", unpaid: "Members who have not paid this month's share" } as const;
 
+interface CustomJobDialogProps {
+  job: CustomJob | null;
+  templates: EmailTemplate[];
+  onClose: () => void;
+  onSave: (j: CustomJob) => boolean;
+}
 // Create or change one of the Owner's jobs: pick a template the System Admin published, see it as members will,
 // and change its subject or text for this job only (the Admin's template stays as it is).
-function CustomJobDialog({ job, templates, onClose, onSave }: { job: CustomJob | null; templates: EmailTemplate[]; onClose: () => void; onSave: (j: CustomJob) => boolean }) {
+function CustomJobDialog({ job, templates, onClose, onSave }: CustomJobDialogProps) {
   const kept = templates.find((t) => t.id === job?.template); // gone when the Admin unpublished it: start from another
   const first = kept ?? templates[0];
   const start = job && kept ? mailOf(job, kept) : first;
@@ -130,9 +144,28 @@ function CustomJobDialog({ job, templates, onClose, onSave }: { job: CustomJob |
   );
 }
 
-// ---------- Scheduled jobs (cron) of one goal. Owners change them; the System Admin only views ----------
+interface GroupJobsProps {
+  entryKey: string;
+  target: Target;
+  goal: ImportGoal;
+  goalName: string;
+  settings: SetupSettings;
+  editable: boolean;
+  onChange: (s: SetupSettings) => void;
+}
+// ---------- Scheduled jobs (cron) of one goal. Owners and the System Admin change them; Members only view ----------
 // Which jobs exist depends on the goal: Gmail jobs need Gmail connected to it, due-date jobs need a loan goal.
-export function GroupJobs({ entryKey, target, goal, goalName, settings, editable, onChange }: { entryKey: string; target: Target; goal: ImportGoal; goalName: string; settings: SetupSettings; editable: boolean; onChange: (s: SetupSettings) => void }) {
+const DELIVERY: Record<OverdueLine["delivery"], string> = { sent: "email sent", test: "test email sent to you", "not-sent": "email not sent", already: "already notified" };
+/** Runs the real overdue check and shows who owes what. Emails go out only when the email service is set up. */
+async function runOverdue() {
+  const r = await overdueRunAction();
+  if (!r.ok) return void toast.error(r.error);
+  const { lines } = r.data;
+  if (!lines.length) return void toast.success("Overdue check: everyone has paid");
+  toast(`Overdue check: ${lines.length} unpaid`, { duration: 15_000, description: lines.map((l) => `${l.member} · ${peso(l.amount)} · ${l.month} · ${DELIVERY[l.delivery]}`).join("\n") });
+}
+
+export function GroupJobs({ entryKey, target, goal, goalName, settings, editable, onChange }: GroupJobsProps) {
   const jobs = jobsFor(settings, target);
   const sample = SAMPLE_RUNS[entryKey];
   const update = (id: JobId, patch: Partial<JobSetting>) => {
@@ -200,7 +233,7 @@ export function GroupJobs({ entryKey, target, goal, goalName, settings, editable
                   {last && <div className="flex justify-end"><StatusBadge status={last[1] ? "Success" : "Failed"} /></div>}
                 </dl>
                 {editable && <div className="flex w-full flex-wrap justify-end gap-2 sm:w-auto sm:flex-col">
-                  <Button variant="outline" size="sm" disabled={!j.on} onClick={() => { const t = EMAIL_JOBS[j.id] && templateOf(j.id, j.template); if (t) send("the group's members", renderEmail(t).subject); else toast(`${j.name} started (simulated)`); }}><Play aria-hidden /> Run now</Button>
+                  <Button variant="outline" size="sm" disabled={!j.on} onClick={() => { if (j.id === "overdue-check") return void runOverdue(); const t = EMAIL_JOBS[j.id] && templateOf(j.id, j.template); if (t) send("the group's members", renderEmail(t).subject); else toast(`${j.name} started (simulated)`); }}><Play aria-hidden /> Run now</Button>
                   <EditSchedule name={j.name} schedule={j.schedule} onSave={(schedule) => update(j.id, { schedule })} />
                   <Button variant="ghost" size="sm" className="text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={() => setDeleting({ name: j.name, note: "It stops running for this goal. You can restore it later from the bottom of this list.", remove: () => { update(j.id, { removed: true }); return true; } })}><Trash2 aria-hidden /> Delete</Button>
                 </div>}

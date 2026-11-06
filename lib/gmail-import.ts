@@ -23,4 +23,4 @@ export const SAMPLE_EMAILS: SampleEmail[] = [
 ];
 
 /** ISO date (yyyy-mm-dd) an email was received, for the record it becomes. */
-export const isoDate = (e: SampleEmail) => e.received.slice(0, 10);
+export const isoDate = (e: Pick<SampleEmail, "received">) => e.received.slice(0, 10);

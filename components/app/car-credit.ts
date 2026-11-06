@@ -3,33 +3,37 @@
 import { useMemo } from "react";
 import { useGoalRecords, useLoanTerms, useTxEdits, writeRecords, writeTxEdits, type GoalRecord, type TxPatch } from "./records";
 import { members, summarize, type Tx } from "@/lib/demo-data";
+import { useImported } from "./imported-records";
+import { CAR_CREDIT, CAR_CREDIT_ENTRY, GMAIL_IMPORT_NOTE } from "@/lib/constants";
 
-export const CAR_CREDIT = "car-credit";
 
 /** A record saved in the app (approved submission or Owner entry) as a Car Credit transaction. */
 const toTx = (r: GoalRecord): Tx => ({
   id: r.id, memberId: members.find((m) => m.name === r.member)?.id ?? r.member, amount: r.amount, date: r.date,
   type: r.kind ?? (r.direction === "out" ? "expense" : "deposit"), method: r.method ?? "-", ref: r.ref,
-  status: "confirmed", source: r.proofOf ? "submission" : "manual", notes: r.note, proofOf: r.proofOf,
+  status: "confirmed", source: r.proofOf ? "submission" : r.note.startsWith(GMAIL_IMPORT_NOTE) ? "imported" : "manual", notes: r.note, proofOf: r.proofOf,
 });
 
 /**
- * Car Credit as it stands now: the sample history plus every record saved in this browser, with the Owner's edits.
+ * Car Credit as it stands now: the sample history, every record saved in this browser and every payment imported on the server, with the Owner's edits.
+ * A payment in both is shown once.
  * Every Car Credit figure on a page reads this, so totals, charts, shares and due dates always agree.
  * On the server and first paint it is the sample alone.
  */
 export function useCarCredit() {
   const records = useGoalRecords(CAR_CREDIT);
+  const imported = useImported(CAR_CREDIT_ENTRY).records;
   const edits = useTxEdits(CAR_CREDIT);
   const terms = useLoanTerms(CAR_CREDIT);
   return useMemo(() => {
     const byId = new Map(edits.map((e) => [e.id, e]));
-    return summarize(records.map(toTx), (t) => {
+    const local = new Set(records.map((r) => r.ref));
+    return summarize([...records, ...imported.filter((r) => !local.has(r.ref))].map(toTx), (t) => {
       const e = byId.get(t.id);
       if (!e) return t;
       return e.deleted ? null : { ...t, ...e };
     }, terms ?? undefined);
-  }, [records, edits, terms]);
+  }, [records, imported, edits, terms]);
 }
 
 /** The Owner's edit and delete. A record saved in the app changes in place; a sample one gets an edit kept beside it. */

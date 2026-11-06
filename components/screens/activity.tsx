@@ -51,12 +51,21 @@ function downloadCsv(rows: Activity[], name: string) {
   URL.revokeObjectURL(url);
 }
 
-function IssueTag({ n }: { n: number }) {
+interface IssueTagProps {
+  n: number;
+}
+function IssueTag({ n }: IssueTagProps) {
   return n > 0 ? <span className={cn("shrink-0 rounded-full bg-warning-soft px-2 py-0.5 text-xs font-medium", toneText.warning)}><AlertTriangle className="mr-1 inline size-3" aria-hidden />{plural(n, "issue")}</span> : null;
 }
 
+interface GoalSectionProps {
+  id: string;
+  rows: Activity[];
+  title: string;
+  onOpen: (a: Activity) => void;
+}
 // ---------- One goal (or whole-group) section: its own filters, table and Previous / Next pages ----------
-function GoalSection({ id, rows, title, onOpen }: { id: string; rows: Activity[]; title: string; onOpen: (a: Activity) => void }) {
+function GoalSection({ id, rows, title, onOpen }: GoalSectionProps) {
   const [f, setF] = useState<Filters>(empty);
   const [page, setPage] = useState(0);
   const set = (patch: Partial<Filters>) => { setF((x) => ({ ...x, ...patch })); setPage(0); };
@@ -140,9 +149,13 @@ function GoalSection({ id, rows, title, onOpen }: { id: string; rows: Activity[]
   );
 }
 
+interface ActivityHistoryProps {
+  rows: Activity[];
+  viewAs: ViewAs;
+}
 // ---------- Activity History: Group (accordion) > Goal (accordion) > filters + table ----------
 // The System Admin sees every group; Owners and Members only the goals they joined (rows arrive already scoped).
-export function ActivityHistory({ rows, viewAs }: { rows: Activity[]; viewAs: ViewAs }) {
+export function ActivityHistory({ rows, viewAs }: ActivityHistoryProps) {
   const [open, setOpen] = useState<Activity | null>(null);
   const me = useMe();
   const admin = viewAs === "admin";

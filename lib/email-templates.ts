@@ -6,7 +6,7 @@ import type { JobId } from "./group-settings";
 export type EmailFormat = "html" | "text";
 export type EmailImage = { id: string; name: string; dataUrl: string };
 /** Which job can use it; "any" fits every email job. */
-export type EmailPurpose = "any" | Extract<JobId, "due-reminders" | "overdue-check" | "monthly-summary">;
+export type EmailPurpose = "any" | Extract<JobId, "due-reminders" | "overdue-check">;
 export type EmailTemplate = {
   id: string; name: string; purpose: EmailPurpose;
   subject: string; format: EmailFormat; body: string;
@@ -17,10 +17,10 @@ export type EmailTemplate = {
 };
 
 export const PURPOSES: [EmailPurpose, string][] = [
-  ["due-reminders", "Due date reminders"], ["overdue-check", "Overdue check"], ["monthly-summary", "Monthly summary email"], ["any", "Any email job"],
+  ["due-reminders", "Due date reminders"], ["overdue-check", "Overdue check"], ["any", "Any email job"],
 ];
 /** Jobs that send email, and the built-in template each uses until the Owner picks another. */
-export const EMAIL_JOBS: Partial<Record<JobId, string>> = { "due-reminders": "et-due", "overdue-check": "et-overdue", "monthly-summary": "et-summary" };
+export const EMAIL_JOBS: Partial<Record<JobId, string>> = { "due-reminders": "et-due", "overdue-check": "et-overdue" };
 
 // What a job fills in when it sends. The preview uses the sample values.
 export const PLACEHOLDERS: [string, string, string][] = [
@@ -37,9 +37,6 @@ export const PLACEHOLDERS: [string, string, string][] = [
 ];
 export const SAMPLE_VALUES = Object.fromEntries(PLACEHOLDERS.map(([k, , v]) => [k, v]));
 
-export const MAX_EMAIL_TEMPLATES = 20;
-export const MAX_IMAGES = 3;
-export const MAX_BODY = 20_000;
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 
@@ -53,7 +50,7 @@ export function renderEmail(t: Pick<EmailTemplate, "subject" | "format" | "body"
   const subject = fill(t.subject, false);
   let html = t.format === "html" ? fill(t.body, true) : `<pre style="font:14px/1.6 system-ui,sans-serif;white-space:pre-wrap;margin:0">${esc(fill(t.body, false))}</pre>`;
   for (const img of t.images) html = html.split(`cid:${img.name}`).join(img.dataUrl);
-  return { subject, html };
+  return { subject, html, text: t.format === "text" ? fill(t.body, false) : undefined };
 }
 /** Placeholders written in the template that no job fills in (likely typos). */
 export const unknownPlaceholders = (t: Pick<EmailTemplate, "subject" | "body">) =>
@@ -75,15 +72,6 @@ export const BUILT_IN_EMAILS: EmailTemplate[] = [
   { id: "et-overdue", name: "Overdue notice", purpose: "overdue-check", builtIn: true, status: "Published", updated: "2026-10-01", images: [], format: "text",
     subject: "{{goal}}: your {{month}} share is overdue",
     body: "Hi {{member}},\n\nYour {{month}} share of {{amount}} for {{goal}} was due on {{due_date}} and has not been paid yet.\n\nPlease pay as soon as you can, then submit the receipt in eShareGoal: {{link}}\n\nThank you,\n{{owner}}" },
-  { id: "et-summary", name: "Monthly summary", purpose: "monthly-summary", builtIn: true, status: "Published", updated: "2026-10-01", images: [], format: "html",
-    subject: "Your {{month}} summary for {{goal}}",
-    body: card(`  <h1 style="font-size:20px;margin:0 0 8px">{{month}} in {{goal}}</h1>
-  <table style="border-collapse:collapse;margin:0 0 16px">
-    <tr><td style="padding:4px 16px 4px 0;color:#6b7280">You paid</td><td><b>{{paid_this_month}}</b></td></tr>
-    <tr><td style="padding:4px 16px 4px 0;color:#6b7280">Your advance</td><td><b>{{advance}}</b></td></tr>
-    <tr><td style="padding:4px 16px 4px 0;color:#6b7280">Next share</td><td><b>{{amount}}</b> due {{due_date}}</td></tr>
-  </table>
-  <a href="{{link}}" style="color:#2563eb">See your share in eShareGoal</a>`) },
 ];
 
 export const isEmailTemplate = (x: unknown): x is EmailTemplate => {

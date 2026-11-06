@@ -1,11 +1,17 @@
 import Link from "next/link";
-import { Clock, Dumbbell, Car, Landmark, ListChecks, PiggyBank, Plus, Target, Users } from "lucide-react";
+import { Clock, Dumbbell, Car, Landmark, ListChecks, PiggyBank, Plus, Target, Trophy, UserRound, Users, Flag } from "lucide-react";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState, PageHeader, StatCard, StatusBadge } from "@/components/app/primitives";
+import { users, type UserStatus } from "@/lib/users-data";
+import { reports } from "@/lib/reports-data";
+import type { GoalRequest } from "@/lib/goal-requests";
+import type { Template } from "@/lib/goal-templates";
+import { MetricCard, type Metric } from "@/components/app/metric-card";
+import { TemplatesMetric } from "@/components/app/admin-metrics";
 import { MyGoalChart } from "./charts";
-import { myActivityFor, type GoalType, type MyGoalDetail } from "@/lib/demo-data";
+import { groups, myActivityFor, type GoalType, type MyGoalDetail } from "@/lib/demo-data";
 import { ACCOUNTS, createdGroupsFor, membersOf, roleIn, sampleGroupsFor, type Account } from "@/lib/accounts";
 import { goalPath } from "@/lib/screens";
 import type { CreatedGroup, ViewAs } from "@/lib/view-as";
@@ -13,14 +19,55 @@ import { CreatedGoalAccordionItem } from "./goal-page";
 import { fmtDate } from "@/lib/money";
 import type { CreatedGoal } from "@/lib/created-goals";
 import { OwnerOnly, RoleBadge } from "@/components/app/view-as";
+import { MyInvitations } from "@/components/app/join-group";
+import { BASE_PATH } from "@/lib/constants";
 
-const base = "/design-preview";
+
+interface AdminMetricsProps {
+  requests: GoalRequest[];
+  created: CreatedGroup[];
+  newGoals: CreatedGoal[];
+  templates: Template[];
+}
+// ---------- System Admin: site-wide numbers, each as "this many of the total" ----------
+/** requests: Owners' goal type requests (shown in Reports). created / newGoals: groups and goals made in the preview. templates: goal templates. */
+function AdminMetrics({ requests, created, newGoals, templates }: AdminMetricsProps) {
+  // Users: active of every user account (the System Admin is not counted).
+  const people = users.filter((u) => u.site === "User");
+  const usersBy = (st: UserStatus) => people.filter((u) => u.status === st).length;
+  // Reports: an issue is active while Open or In review. Goal type requests count as reports (Open until built or rejected).
+  const all = [...reports.map((r) => ({ status: r.status, high: r.priority === "High" })), ...requests.map((r) => ({ status: r.status === "Built" ? "Resolved" : r.status === "Rejected" ? "Dismissed" : "Open", high: false }))];
+  const activeReports = all.filter((r) => r.status === "Open" || r.status === "In review");
+  // Groups (parent) and their goals (sub goals): live sample groups, plus the ones made in the preview.
+  const live = groups.filter((g) => !g.archived);
+  const sampleGoals = live.flatMap((g) => g.goals);
+  const goalCount = sampleGoals.length + newGoals.length;
+  const done = sampleGoals.filter((x) => x.status === "Completed" || x.progress >= 100);
+  const closest = sampleGoals.filter((x) => !done.includes(x) && x.status === "Active").sort((x, y) => y.progress - x.progress)[0];
+  const paused = sampleGoals.filter((x) => x.status === "Paused").length + newGoals.filter((x) => x.status === "Paused").length;
+  const metrics: Metric[] = [
+    { label: "Active users", Icon: UserRound, value: usersBy("Active"), total: people.length, tone: "success", href: `${BASE_PATH}/users`, link: "Open Users",
+      details: [`${usersBy("Pending review")} pending review · ${usersBy("Invited")} invited`, `${usersBy("Rejected")} rejected · ${usersBy("Revoked")} revoked`] },
+    { label: "Active issues", Icon: Flag, value: activeReports.length, total: all.length, unit: "reports", tone: "primary", href: `${BASE_PATH}/reports`, link: "Open Reports",
+      details: [`${all.filter((r) => r.status === "Open").length} open · ${all.filter((r) => r.status === "In review").length} in review`, `${activeReports.filter((r) => r.high).length} high priority · ${all.length - activeReports.length} closed`] },
+    { label: "Goals achieved", Icon: Trophy, value: done.length, total: goalCount, unit: "goals", tone: "success", href: `${BASE_PATH}/goals`, link: "Open All goals",
+      details: [closest ? `Closest: ${closest.name} (${closest.progress}%)` : "No active goal", `${goalCount - done.length} still in progress`] },
+    { label: "Groups and goals", Icon: Users, value: live.length + created.length, unit: `groups · ${goalCount} goals`, href: `${BASE_PATH}/dashboard`, link: "See every group below",
+      details: ["Groups are the parent; goals are the sub goals inside them", `Goals: ${goalCount - paused} active · ${paused} paused`] },
+  ];
+  // Templates and workflows partly live in this browser (email templates, workflows), so those two cards render on the client.
+  return <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{metrics.map((m) => <MetricCard key={m.label} m={m} />)}<TemplatesMetric goal={templates.map((t) => t.status)} /></div>;
+}
 const goalIcon: Record<GoalType, typeof Landmark> = { loan: Car, shared_money: PiggyBank, fitness: Dumbbell, tasks: ListChecks, custom: Target };
 // The accordion panel underlines links and spaces paragraphs by default; dashboard panels hold cards, so turn both off.
 const panel = "[&_a]:no-underline [&_p:not(:last-child)]:mb-0";
 
+interface GoalDashboardProps {
+  g: MyGoalDetail;
+  viewAs: ViewAs;
+}
 // ---------- One goal's dashboard (inner accordion panel) ----------
-function GoalDashboard({ g, viewAs }: { g: MyGoalDetail; viewAs: ViewAs }) {
+function GoalDashboard({ g, viewAs }: GoalDashboardProps) {
   return (
     <div className="space-y-3">
       <div className="grid gap-3 sm:grid-cols-3">
@@ -48,10 +95,17 @@ function GoalDashboard({ g, viewAs }: { g: MyGoalDetail; viewAs: ViewAs }) {
 }
 
 
+interface DashboardScreenProps {
+  account: Account;
+  created: CreatedGroup[];
+  newGoals?: CreatedGoal[];
+  requests?: GoalRequest[];
+  templates?: Template[];
+}
 // ---------- Dashboard: groups (outer accordion) > goals (inner accordion) ----------
 // account: who is looking. created: every created group (this account sees the ones it is in).
 // Roles are per group: the same user is Owner where they own the group and Member elsewhere.
-export function DashboardScreen({ account, created, newGoals = [] }: { account: Account; created: CreatedGroup[]; newGoals?: CreatedGoal[] }) {
+export function DashboardScreen({ account, created, newGoals = [], requests = [], templates = [] }: DashboardScreenProps) {
   const me = ACCOUNTS[account];
   const admin = account === "admin";
   const role = (groupId: string): ViewAs => roleIn(account, groupId, created) ?? "member";
@@ -69,8 +123,10 @@ export function DashboardScreen({ account, created, newGoals = [] }: { account: 
       <PageHeader
         title={admin ? "All groups" : `Welcome back, ${me.name}`}
         description={admin ? "Every group and goal on eShareGoal, read-only." : "Your groups and goals. Open a goal to see your activity in it."}
-        actions={<OwnerOnly><Link href={`${base}/new-goal`} className={buttonVariants()}><Plus aria-hidden /> New goal</Link></OwnerOnly>}
+        actions={<><OwnerOnly><Link href={`${BASE_PATH}/new-goal`} className={buttonVariants()}><Plus aria-hidden /> New goal</Link></OwnerOnly></>}
       />
+      <MyInvitations />
+      {admin && <AdminMetrics requests={requests} created={created} newGoals={newGoals} templates={templates} />}
       <div className="flex flex-wrap items-center gap-2 rounded-xl border bg-card px-4 py-3 text-sm">
         <span className="text-muted-foreground">You are viewing as</span>{admin ? <RoleBadge role="admin" className="text-sm" /> : <span className="font-medium">{me.label}</span>}
         <span className="text-muted-foreground">{note}</span>
@@ -111,7 +167,7 @@ export function DashboardScreen({ account, created, newGoals = [] }: { account: 
                 })}
                 {newGoals.filter((x) => x.groupId === g.id).map((x) => <CreatedGoalAccordionItem key={x.id} g={x} members={membersOf(g.id, created)} panelClass={panel} />)}
               </Accordion>
-              <Link href={`${base}/group?group=${g.id}`} className={`${buttonVariants({ variant: "ghost", size: "sm" })} mt-3`}>Open {g.name} group</Link>
+              <Link href={`${BASE_PATH}/group?group=${g.id}`} className={`${buttonVariants({ variant: "ghost", size: "sm" })} mt-3`}>Open {g.name} group</Link>
             </AccordionContent>
           </AccordionItem>
         ))}
@@ -131,8 +187,8 @@ export function DashboardScreen({ account, created, newGoals = [] }: { account: 
               <AccordionContent className={`px-4 pt-1 pb-4 ${panel}`}>
                 {mine.length
                   ? <Accordion multiple defaultValue={[mine[0].id]} className="gap-2">{mine.map((x) => <CreatedGoalAccordionItem key={x.id} g={x} members={people} panelClass={panel} />)}</Accordion>
-                  : <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-muted/40 p-3"><span className="text-muted-foreground">No goals yet.{r === "owner" && " As the Owner you can add the first one."}</span>{r === "owner" && <Link href={`${base}/new-goal?group=${g.id}`} className={buttonVariants({ size: "sm" })}><Plus aria-hidden /> Add a goal</Link>}</div>}
-                <Link href={`${base}/group?group=${g.id}`} className={`${buttonVariants({ variant: "ghost", size: "sm" })} mt-3`}>Open {g.name} group</Link>
+                  : <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-muted/40 p-3"><span className="text-muted-foreground">No goals yet.{r === "owner" && " As the Owner you can add the first one."}</span>{r === "owner" && <Link href={`${BASE_PATH}/new-goal?group=${g.id}`} className={buttonVariants({ size: "sm" })}><Plus aria-hidden /> Add a goal</Link>}</div>}
+                <Link href={`${BASE_PATH}/group?group=${g.id}`} className={`${buttonVariants({ variant: "ghost", size: "sm" })} mt-3`}>Open {g.name} group</Link>
               </AccordionContent>
             </AccordionItem>
           );
@@ -142,4 +198,4 @@ export function DashboardScreen({ account, created, newGoals = [] }: { account: 
   );
 }
 
-export const DashboardEmpty = () => <><PageHeader title="Welcome to eShareGoal" /><EmptyState title="You have not joined a group yet" body="Create a group or enter an invitation code. Your groups and goals will show up here." cta={{ label: "New group", href: `${base}/groups` }} /></>;
+export const DashboardEmpty = () => <><PageHeader title="Welcome to eShareGoal" /><MyInvitations /><EmptyState title="You have not joined a group yet" body="Create a group, or accept an invitation when a group's Owner invites you. Your groups and goals will show up here." cta={{ label: "New group", href: `${BASE_PATH}/groups` }} /></>;

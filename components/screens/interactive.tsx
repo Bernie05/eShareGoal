@@ -10,19 +10,23 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
-import { NativeSelect } from "@/components/ui/native-select";
 import { TransactionForm } from "./transaction-form";
-import { candidates, members, type CandStatus, type Candidate, type Tx } from "@/lib/demo-data";
+import { candidates, type CandStatus, type Candidate, type Tx } from "@/lib/demo-data";
 import { useCarCredit, useCarCreditEditor } from "@/components/app/car-credit";
-import { newRecordId, readRecords, writeRecords, type TxPatch } from "@/components/app/records";
-import { saveReviewItems, useReviewItems, type ReviewItem } from "@/components/app/import-store";
+import type { TxPatch } from "@/components/app/records";
+import { CorrectDialog, ReviewList, useReviewQueue } from "@/components/app/import-review";
 import { fmtDate, peso } from "@/lib/money";
 import { cn } from "@/lib/utils";
+import { CAR_CREDIT } from "@/lib/constants";
 
+interface AddTransactionDialogProps {
+  label?: string;
+  goalId: string;
+  memberId?: string;
+}
 // Owners add transactions directly. Members submit theirs with a receipt for the Owner to approve. The System Admin only views.
 // goalId: the sample goal the transaction is saved to. memberId: who it is for, when opened from a member's row.
-export function AddTransactionDialog({ label = "Add transaction", goalId, memberId }: { label?: string; goalId: string; memberId?: string }) {
+export function AddTransactionDialog({ label = "Add transaction", goalId, memberId }: AddTransactionDialogProps) {
   const [open, setOpen] = useState(false);
   const role = useViewAs();
   if (role === "admin") return null;
@@ -80,7 +84,7 @@ export function MemberContributions() {
                 </li>
               ))}
             </ul>
-            <OwnerOnly><div className="mt-2 flex justify-end"><AddTransactionDialog goalId="car-credit" memberId={b.member.id} label={`Add for ${b.member.name}`} /></div></OwnerOnly>
+            <OwnerOnly><div className="mt-2 flex justify-end"><AddTransactionDialog goalId={CAR_CREDIT} memberId={b.member.id} label={`Add for ${b.member.name}`} /></div></OwnerOnly>
           </AccordionContent>
         </AccordionItem>
       ))}
@@ -90,20 +94,28 @@ export function MemberContributions() {
 
 const txName = (t: Tx) => `${typeLabel[t.type].toLowerCase()} of ${peso(t.amount)} on ${fmtDate(t.date)}`;
 
-function EditTxDialog({ tx, save }: { tx: Tx; save: (id: string, p: TxPatch) => boolean }) {
+interface EditTxDialogProps {
+  tx: Tx;
+  save: (id: string, p: TxPatch) => boolean;
+}
+function EditTxDialog({ tx, save }: EditTxDialogProps) {
   const [open, setOpen] = useState(false);
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger render={<Button variant="ghost" size="icon-sm" aria-label={`Edit ${txName(tx)}`} />}><Pencil aria-hidden /></DialogTrigger>
       <DialogContent className="sm:max-w-xl">
         <DialogHeader><DialogTitle>Edit transaction</DialogTitle><DialogDescription>Fix a wrong amount, date, member or type. Totals and shares update right away.</DialogDescription></DialogHeader>
-        {open && <TransactionForm goalId="car-credit" edit={{ tx, save: (p) => save(tx.id, p) }} onDone={() => setOpen(false)} />}
+        {open && <TransactionForm goalId={CAR_CREDIT} edit={{ tx, save: (p) => save(tx.id, p) }} onDone={() => setOpen(false)} />}
       </DialogContent>
     </Dialog>
   );
 }
 
-function DeleteTxDialog({ tx, remove }: { tx: Tx; remove: (id: string) => boolean }) {
+interface DeleteTxDialogProps {
+  tx: Tx;
+  remove: (id: string) => boolean;
+}
+function DeleteTxDialog({ tx, remove }: DeleteTxDialogProps) {
   const [open, setOpen] = useState(false);
   const del = () => {
     if (!remove(tx.id)) return void toast.error("Could not delete. This browser's storage is full or blocked (private mode), and nothing was changed.");
@@ -124,54 +136,27 @@ function DeleteTxDialog({ tx, remove }: { tx: Tx; remove: (id: string) => boolea
   );
 }
 
-/** Payments a Gmail import job sent here (Run now). Confirming one adds a record to its goal, so totals change for real. */
-function JobReviewItems({ canReview }: { canReview: boolean }) {
-  const items = useReviewItems();
-  const set = (id: string, patch: Partial<ReviewItem>) => saveReviewItems(items.map((x) => (x.id === id ? { ...x, ...patch } : x))) || (toast.error("Could not save. This browser's storage is full or blocked."), false);
-  const confirm = (r: ReviewItem) => {
-    const recordId = newRecordId();
-    const rec = { id: recordId, member: r.member, date: r.date, note: `Gmail import · ${r.ref}`, ref: r.ref, amount: r.amount, direction: "in" as const, kind: "deposit" as const, method: "Bank transfer" };
-    if (!writeRecords(r.goalId, [rec, ...readRecords(r.goalId)])) return void toast.error("Could not save. This browser's storage is full or blocked.");
-    if (set(r.id, { status: "Confirmed", recordId })) toast.success(`Confirmed: ${peso(r.amount)} from ${r.member} added to ${r.goal}`);
-  };
+interface JobReviewItemsProps {
+  canReview: boolean;
+}
+/** Payments import jobs sent here. Confirming one adds a record to its goal, so totals change for real. */
+function JobReviewItems({ canReview }: JobReviewItemsProps) {
+  const { items, pending } = useReviewQueue();
   if (!items.length) return null;
   return (
     <section className="space-y-3">
-      <h2 className="text-sm font-medium">From your import jobs <span className="font-normal text-muted-foreground">· {items.filter((r) => r.status === "Pending Review").length} waiting</span></h2>
-      <ul className="space-y-3">{items.map((r) => {
-        const open = r.status === "Pending Review";
-        return (
-          <li key={r.id} className={cn("rounded-xl border bg-card p-4", open && !r.member && "border-warning/50")}>
-            <div className="flex flex-wrap items-start justify-between gap-2">
-              <div>
-                <p className="num text-lg font-semibold">{peso(r.amount)}</p>
-                <p className="text-xs text-muted-foreground">{fmtDate(r.date)} · Ref {r.ref} · Payer {r.payer || "unknown"} · <span className="font-mono">{r.msg}</span></p>
-              </div>
-              <StatusBadge status={r.status} />
-            </div>
-            <dl className="mt-3 grid gap-x-6 gap-y-1 text-sm sm:grid-cols-3">
-              <div><dt className="text-xs text-muted-foreground">Member</dt><dd className={cn("font-medium", !r.member && toneText.warning)}>{r.member || "No payer rule matched"}</dd></div>
-              <div><dt className="text-xs text-muted-foreground">Goal</dt><dd className="font-medium">{r.goal}</dd></div>
-              <div><dt className="text-xs text-muted-foreground">Found by</dt><dd className="font-medium">{r.job}</dd></div>
-            </dl>
-            {open && canReview && (
-              <div className="mt-3 flex flex-wrap gap-2">
-                <Button size="sm" disabled={!r.member} onClick={() => confirm(r)}><Check aria-hidden /> Confirm</Button>
-                <Button size="sm" variant="outline" onClick={() => set(r.id, { status: "Rejected" }) && toast("Rejected. No record created.")}><X aria-hidden /> Reject</Button>
-                <CorrectDialog c={{ id: r.id, ref: r.ref }} onSave={(m) => set(r.id, { member: m }) && toast.success("Member set. You can confirm now.")} />
-                {!r.member && <span className="self-center text-xs text-warning">Choose a member before confirming, or add a payer rule to the job.</span>}
-              </div>
-            )}
-          </li>
-        );
-      })}</ul>
+      <h2 className="text-sm font-medium">From your import jobs <span className="font-normal text-muted-foreground">· {pending.length} waiting</span></h2>
+      <ReviewList items={items} canReview={canReview} />
       <h2 className="pt-2 text-sm font-medium">Sample candidates</h2>
     </section>
   );
 }
 
+interface ImportQueueProps {
+  mode?: "default" | "empty";
+}
 /** Review queue: what import jobs sent (saved), then the fictional sample candidates (local state only). */
-export function ImportQueue({ mode = "default" }: { mode?: "default" | "empty" }) {
+export function ImportQueue({ mode = "default" }: ImportQueueProps) {
   const canReview = useViewAs() === "owner";
   const [rows, setRows] = useState<Candidate[]>(mode === "empty" ? [] : candidates);
   const set = (id: string, patch: Partial<Candidate>) => setRows((r) => r.map((c) => (c.id === id ? { ...c, ...patch } : c)));
@@ -221,26 +206,3 @@ export function ImportQueue({ mode = "default" }: { mode?: "default" | "empty" }
   );
 }
 
-function CorrectDialog({ c, onSave }: { c: Pick<Candidate, "id" | "ref">; onSave: (member: string) => void }) {
-  const [open, setOpen] = useState(false);
-  const [m, setM] = useState("");
-  return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger render={<Button size="sm" variant="ghost" />}><Pencil aria-hidden /> Correct</DialogTrigger>
-      <DialogContent>
-        <DialogHeader><DialogTitle>Correct match</DialogTitle><DialogDescription>Reference {c.ref}. Assign the right member.</DialogDescription></DialogHeader>
-        <div className="space-y-1.5">
-          <Label htmlFor={`m-${c.id}`}>Member</Label>
-          <NativeSelect id={`m-${c.id}`} value={m} onChange={(e) => setM(e.target.value)}>
-            <option value="">Select a member…</option>
-            {members.map((x) => <option key={x.id} value={x.name}>{x.name}</option>)}
-          </NativeSelect>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-          <Button disabled={!m} onClick={() => { onSave(m); setOpen(false); }}>Save correction</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}

@@ -1,6 +1,14 @@
 "use client";
 
-import { useEmailMode, useSendEmail, useSetEmailMode, useViewAs } from "@/components/app/view-as";
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useTheme } from "next-themes";
+import { useSyncExternalStore } from "react";
+import { CardEditor } from "@/components/app/card-editor";
+import { settingsFor, settingsGroups, settingsHref, type SettingsTab } from "@/lib/screens";
+import { cn } from "@/lib/utils";
+import { useAccount, useEmailMode, useSendEmail, useSetEmailMode, useViewAs } from "@/components/app/view-as";
+import { ACCOUNTS } from "@/lib/accounts";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,9 +16,15 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Switch } from "@/components/ui/switch";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ADMIN_EMAIL, TIME_ZONE } from "@/lib/constants";
 
-export function Row({ id, label, hint, children }: { id: string; label: string; hint?: string; children: React.ReactNode }) {
+interface RowProps {
+  id: string;
+  label: string;
+  hint?: string;
+  children: React.ReactNode;
+}
+export function Row({ id, label, hint, children }: RowProps) {
   return (
     <div className="grid gap-1.5 sm:grid-cols-[14rem_1fr] sm:items-start sm:gap-6">
       <div><Label htmlFor={id}>{label}</Label>{hint && <p className="mt-0.5 text-xs text-muted-foreground">{hint}</p>}</div>
@@ -18,13 +32,24 @@ export function Row({ id, label, hint, children }: { id: string; label: string; 
     </div>
   );
 }
-export const Toggle = ({ id, label, hint, on = false }: { id: string; label: string; hint?: string; on?: boolean }) => (
+interface ToggleProps {
+  id: string;
+  label: string;
+  hint?: string;
+  on?: boolean;
+}
+export const Toggle = ({ id, label, hint, on = false }: ToggleProps) => (
   <div className="flex items-center justify-between gap-4">
     <div><Label htmlFor={id}>{label}</Label>{hint && <p className="text-xs text-muted-foreground">{hint}</p>}</div>
     <Switch id={id} defaultChecked={on} />
   </div>
 );
-export function Section({ title, description, children }: { title: string; description: string; children: React.ReactNode }) {
+interface SectionProps {
+  title: string;
+  description: string;
+  children: React.ReactNode;
+}
+export function Section({ title, description, children }: SectionProps) {
   return (
     <Card>
       <CardHeader><CardTitle>{title}</CardTitle><CardDescription>{description}</CardDescription></CardHeader>
@@ -34,46 +59,102 @@ export function Section({ title, description, children }: { title: string; descr
 }
 export const save = () => toast.success("Settings saved (preview only)");
 
-export function SettingsTabs() {
-  const viewAs = useViewAs();
-  // Personal settings only. Integrations, scheduled jobs and notifications are set per group (Group settings).
-  const tabs = [["general", "General"], ["account", "Account"], ...(viewAs === "admin" ? [["email", "Email delivery"]] : []), ["privacy", "Privacy and security"]];
+interface SettingLineProps {
+  title: string;
+  hint: string;
+  danger?: boolean;
+  children: React.ReactNode;
+}
+const SettingLine = ({ title, hint, danger = false, children }: SettingLineProps) => (
+  <div className="flex flex-wrap items-center justify-between gap-3">
+    <div><p className={cn("text-sm font-medium", danger && "text-destructive")}>{title}</p><p className="text-xs text-muted-foreground">{hint}</p></div>
+    {children}
+  </div>
+);
+
+function ProfileSection() {
+  const admin = useViewAs() === "admin";
   return (
-    <Tabs defaultValue="general" className="gap-4">
-      <TabsList className="h-auto w-full flex-wrap justify-start">
-        {tabs.map(([v, l]) => (
-          <TabsTrigger key={v} value={v}>{l}</TabsTrigger>
+    <Section title="Profile" description="Your name and sign-in details.">
+      <Row id="name" label="Display name"><Input id="name" defaultValue={admin ? "System Admin" : "Bernz"} /></Row>
+      <Row id="email" label="Email" hint="Used to sign in and for invitations."><Input id="email" type="email" defaultValue={admin ? "admin@example.com" : "bernz@example.com"} /></Row>
+      <Button onClick={save}>Save changes</Button>
+    </Section>
+  );
+}
+
+function CardsSection() {
+  const account = useAccount();
+  return account === "admin" ? null : <Section title="Payment cards" description="The cards or accounts you send money from. Add every one you use, so your transfers are credited to you."><CardEditor user={ACCOUNTS[account].name} /></Section>;
+}
+
+function RegionSection() {
+  return (
+    <Section title="Region and format" description="How dates and money appear for you.">
+      <Row id="lang" label="Language"><NativeSelect id="lang" defaultValue="en"><option value="en">English</option></NativeSelect></Row>
+      <Row id="tz" label="Timezone"><NativeSelect id="tz" defaultValue={TIME_ZONE}><option>Asia/Manila</option><option>UTC</option></NativeSelect></Row>
+      <Row id="cur" label="Default currency" hint="v1 supports PHP only."><NativeSelect id="cur" defaultValue="PHP" disabled><option value="PHP">Philippine peso (₱)</option></NativeSelect></Row>
+      <Row id="df" label="Date format"><NativeSelect id="df" defaultValue="mdy"><option value="mdy">Oct 25, 2026</option><option value="dmy">25 Oct 2026</option><option value="iso">2026-10-25</option></NativeSelect></Row>
+      <Button onClick={save}>Save changes</Button>
+    </Section>
+  );
+}
+
+const noSubscribe = () => () => {};
+function AppearanceSection() {
+  const { theme, setTheme } = useTheme();
+  const ready = useSyncExternalStore(noSubscribe, () => true, () => false); // the saved theme is only known in the browser
+  return (
+    <Section title="Appearance" description="Changes apply right away on this device.">
+      <Row id="theme" label="Theme"><NativeSelect id="theme" value={ready ? theme : "system"} disabled={!ready} onChange={(e) => setTheme(e.target.value)}><option value="light">Light</option><option value="dark">Dark</option><option value="system">Same as this device</option></NativeSelect></Row>
+    </Section>
+  );
+}
+
+function PrivacySection() {
+  return (
+    <>
+      <Section title="Your data" description="What you can take with you.">
+        <SettingLine title="Export my data" hint="CSV of all records you can see."><Button variant="outline" onClick={() => toast("Preview only")}>Export</Button></SettingLine>
+      </Section>
+      <Section title="Delete account" description="Removes your account for good.">
+        <SettingLine danger title="Delete my account" hint="Asks for confirmation. Cannot be undone."><Button variant="destructive" onClick={() => toast("Preview only")}>Delete account</Button></SettingLine>
+      </Section>
+    </>
+  );
+}
+
+const SECTION: Record<SettingsTab, () => React.ReactNode> = { profile: ProfileSection, cards: CardsSection, region: RegionSection, appearance: AppearanceSection, privacy: PrivacySection, email: EmailDelivery };
+
+/** Personal settings, grouped by what people come to do. Integrations, scheduled jobs and notifications are set per group (Group settings). */
+export function SettingsSections() {
+  const viewAs = useViewAs();
+  const router = useRouter();
+  const groups = settingsGroups(viewAs);
+  const allowed = settingsFor(viewAs);
+  const asked = useSearchParams().get("tab");
+  const tab: SettingsTab = allowed.find((s) => s.tab === asked)?.tab ?? allowed[0].tab;
+  const Current = SECTION[tab];
+  return (
+    <div className="grid gap-6 md:grid-cols-[13rem_minmax(0,1fr)] md:items-start">
+      <nav aria-label="Settings sections" className="hidden space-y-4 md:block">
+        {groups.map((g) => (
+          <div key={g.label}>
+            <p className="px-2.5 pb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">{g.label}</p>
+            <ul className="space-y-0.5">{g.items.map((s) => (
+              <li key={s.tab}><Link href={settingsHref(s.tab)} aria-current={s.tab === tab ? "page" : undefined} className={cn("block rounded-lg px-2.5 py-1.5 text-sm outline-none hover:bg-accent/60 focus-visible:ring-2 focus-visible:ring-ring", s.tab === tab && "bg-accent font-medium")}>{s.label}</Link></li>
+            ))}</ul>
+          </div>
         ))}
-      </TabsList>
-
-      <TabsContent value="general">
-        <Section title="General" description="Language, region and appearance.">
-          <Row id="lang" label="Language"><NativeSelect id="lang" defaultValue="en"><option value="en">English</option></NativeSelect></Row>
-          <Row id="tz" label="Timezone"><NativeSelect id="tz" defaultValue="Asia/Manila"><option>Asia/Manila</option><option>UTC</option></NativeSelect></Row>
-          <Row id="cur" label="Default currency" hint="v1 supports PHP only."><NativeSelect id="cur" defaultValue="PHP" disabled><option value="PHP">Philippine peso (₱)</option></NativeSelect></Row>
-          <Row id="df" label="Date format"><NativeSelect id="df" defaultValue="mdy"><option value="mdy">Oct 25, 2026</option><option value="dmy">25 Oct 2026</option><option value="iso">2026-10-25</option></NativeSelect></Row>
-          <Row id="theme" label="Theme"><NativeSelect id="theme" defaultValue="light"><option value="light">Light</option><option value="dark">Dark</option></NativeSelect></Row>
-          <Button onClick={save}>Save changes</Button>
-        </Section>
-      </TabsContent>
-
-      <TabsContent value="account">
-        <Section title="Account" description="Your profile and sign-in details.">
-          <Row id="name" label="Display name"><Input id="name" defaultValue={viewAs === "admin" ? "System Admin" : "Bernz"} /></Row>
-          <Row id="email" label="Email" hint="Used to sign in and for invitations."><Input id="email" type="email" defaultValue={viewAs === "admin" ? "admin@example.com" : "bernz@example.com"} /></Row>
-          <Button onClick={save}>Save changes</Button>
-        </Section>
-      </TabsContent>
-
-      {viewAs === "admin" && <TabsContent value="email"><EmailDelivery /></TabsContent>}
-
-      <TabsContent value="privacy">
-        <Section title="Privacy and security" description="Your data and connected accounts.">
-          <div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-sm font-medium">Export my data</p><p className="text-xs text-muted-foreground">CSV of all records you can see.</p></div><Button variant="outline" onClick={() => toast("Preview only")}>Export</Button></div>
-          <div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-sm font-medium text-destructive">Delete my account</p><p className="text-xs text-muted-foreground">Asks for confirmation. Cannot be undone.</p></div><Button variant="destructive" onClick={() => toast("Preview only")}>Delete account</Button></div>
-        </Section>
-      </TabsContent>
-    </Tabs>
+      </nav>
+      <div className="space-y-1.5 md:hidden">
+        <Label htmlFor="settings-section">Section</Label>
+        <NativeSelect id="settings-section" value={tab} onChange={(e) => router.push(settingsHref(e.target.value as SettingsTab))}>
+          {groups.map((g) => <optgroup key={g.label} label={g.label}>{g.items.map((s) => <option key={s.tab} value={s.tab}>{s.label}</option>)}</optgroup>)}
+        </NativeSelect>
+      </div>
+      <div className="min-w-0 space-y-4"><Current /></div>
+    </div>
   );
 }
 
@@ -110,7 +191,7 @@ function EmailDelivery() {
         <p className={`rounded-lg px-3 py-2 text-xs ${prod ? "bg-warning-soft text-warning" : "bg-muted text-muted-foreground"}`}>
           {prod ? "Production needs an email provider (for example Resend or SMTP) set up on the server with a verified sender domain. This preview never sends real email." : "Development mode is safe for testing: no user receives anything."}
         </p>
-        <Button variant="outline" onClick={() => send("admin@example.com", "Test email")}>Send a test email</Button>
+        <Button variant="outline" onClick={() => send(ADMIN_EMAIL, "Test email")}>Send a test email</Button>
       </Section>
       <Section title="Automatic emails" description="What users receive and when.">
         <ul className="divide-y text-sm">{templates.map(([t, d]) => <li key={t} className="py-2"><p className="font-medium">{t}</p><p className="text-xs text-muted-foreground">{d}</p></li>)}</ul>

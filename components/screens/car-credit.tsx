@@ -12,7 +12,11 @@ import { addMonths, fmtDate, peso } from "@/lib/money";
 // or approves a member's submission. `group`: also the fund totals (Owner and System Admin only).
 const daysTo = (iso: string) => Math.round((Date.parse(iso) - Date.parse(TODAY)) / 86_400_000);
 
-export function LoanStats({ group, noSchedule = false }: { group: boolean; noSchedule?: boolean }) {
+interface LoanStatsProps {
+  group: boolean;
+  noSchedule?: boolean;
+}
+export function LoanStats({ group, noSchedule = false }: LoanStatsProps) {
   const { totals, nextDue, loan } = useCarCredit();
   const na = <Unavailable why="No loan schedule is configured" />;
   const done = totals.installmentsDone >= loan.term;

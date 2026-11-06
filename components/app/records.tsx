@@ -2,6 +2,7 @@
 
 import { useSyncExternalStore } from "react";
 import type { LoanTerms, Tx } from "@/lib/demo-data";
+import { MAX_DECIDED_SUBMISSIONS, STORAGE, STORAGE_EVENTS } from "@/lib/constants";
 
 // Records of goals created in the preview (no backend yet). They live in this browser's localStorage,
 // one list per goal, because cookies are too small for them. Every read and write is guarded.
@@ -30,7 +31,7 @@ export type Submission = {
   dismissed?: boolean; // the Member closed it in their "Recently reviewed" list
 } & TxDetails;
 
-const EVENT = "esg-records-change";
+const EVENT = STORAGE_EVENTS.records;
 const cache = new Map<string, { raw: string | null; list: unknown[] }>();
 
 function readList<T>(key: string, valid: (x: unknown) => x is T): T[] {
@@ -62,8 +63,8 @@ function subscribe(cb: () => void) {
   return () => { window.removeEventListener(EVENT, cb); window.removeEventListener("storage", cb); };
 }
 
-const RECORDS = (goalId: string) => `esg-records:${goalId}`;
-const SUBMISSIONS = (goalId: string) => `esg-submissions:${goalId}`;
+const RECORDS = STORAGE.records;
+const SUBMISSIONS = STORAGE.submissions;
 const EMPTY_RECORDS: GoalRecord[] = [];
 const EMPTY_SUBMISSIONS: Submission[] = [];
 const isRecord = (r: unknown): r is GoalRecord => { const x = r as GoalRecord; return typeof x?.id === "string" && typeof x.member === "string" && typeof x.date === "string" && typeof x.amount === "number" && Number.isFinite(x.amount); };
@@ -83,7 +84,7 @@ export function useGoalRecords(goalId: string) {
 // The Owner's edits and deletions of transactions built into the app (the sample history), kept beside it by id.
 export type TxPatch = Pick<Tx, "memberId" | "amount" | "date" | "type" | "method" | "ref" | "notes">;
 export type TxEdit = { id: string; deleted?: boolean } & Partial<TxPatch>;
-const EDITS = (goalId: string) => `esg-tx-edits:${goalId}`;
+const EDITS = STORAGE.txEdits;
 const EMPTY_EDITS: TxEdit[] = [];
 const isEdit = (e: unknown): e is TxEdit => typeof (e as TxEdit)?.id === "string";
 export const writeTxEdits = (goalId: string, list: TxEdit[]) => writeList(EDITS(goalId), list);
@@ -92,7 +93,7 @@ export function useTxEdits(goalId: string) {
 }
 
 // The Owner's changes to a loan goal's terms (Car Credit), stored as a one-item list so they share the guarded reader.
-const TERMS = (goalId: string) => `esg-loan-terms:${goalId}`;
+const TERMS = STORAGE.loanTerms;
 const EMPTY_TERMS: LoanTerms[] = [];
 const isTerms = (t: unknown): t is LoanTerms => { const x = t as LoanTerms; return typeof x?.monthly === "number" && typeof x.term === "number" && typeof x.firstDue === "string" && typeof x.shares === "object" && x.shares !== null; };
 export const writeLoanTerms = (goalId: string, t: LoanTerms) => writeList(TERMS(goalId), [t]);
@@ -102,7 +103,6 @@ export function useLoanTerms(goalId: string): LoanTerms | null {
 }
 
 // Images are large, so only the newest decided submissions are kept; pending ones are never dropped.
-export const MAX_DECIDED_SUBMISSIONS = 20;
 export function writeSubmissions(goalId: string, list: Submission[]) {
   const pending = list.filter((s) => s.status === "Pending");
   const decided = list.filter((s) => s.status !== "Pending").sort((a, b) => (b.reviewed ?? "").localeCompare(a.reviewed ?? "")).slice(0, MAX_DECIDED_SUBMISSIONS);
@@ -124,7 +124,6 @@ export function useSubmissionsAcross(goalIds: string[]): Record<string, Submissi
 export const newRecordId = () => `r-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
 export const newSubmissionId = () => `s-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
 
-export const MAX_PROOF_UPLOAD = 10 * 1024 * 1024; // what a Member may pick; it is shrunk well below this before saving
 /** Shrinks a photo or screenshot to at most 1280px on its longest side as a JPEG data URL (about 100-300 KB),
  *  so a few receipts fit in the browser's storage. Throws when the file is not an image the browser can read. */
 export async function shrinkImage(file: File, max = 1280): Promise<string> {

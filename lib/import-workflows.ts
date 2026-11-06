@@ -1,9 +1,10 @@
-// Import workflows: which payment emails Gmail import reads (Where), and how it reads them into JSON.
-// The System Admin builds and publishes the common ones (Workflows screen); an Owner may also make the goal's own.
-// A goal's Gmail import jobs (Goal setup → Scheduled jobs) each run one workflow on a schedule and map payers to members;
-// Goal setup → Integrations → Gmail only connects the inbox they read.
+// What a Gmail import job reads: which payment emails (Where), and how they become JSON. Called a workflow in the code; on screen
+// it is simply the job's filter and target fields, set up in the job itself (Goal setup → Scheduled jobs). Built-in ones are the
+// jobs' starting setups. Goal setup → Integrations → Gmail only connects the inbox they read.
 import type { SampleEmail } from "./gmail-import";
 import type { Schedule } from "./group-settings";
+import { CAR_CREDIT_ENTRY, WORKFLOW_LIMITS } from "./constants";
+import { memberByCard, type CardMatch, type UserCard } from "./user-cards";
 
 /** Step 1, Where: which emails. An email is read when ANY group matches, and a group matches when ALL its conditions do,
  *  e.g. [[To contains Bernie], [Subject contains Sample, Body contains 1000]] = To: Bernie OR (Subject: Sample AND 1000).
@@ -25,7 +26,7 @@ export type ImportWorkflow = {
 };
 
 /** A goal's Gmail import job: one workflow run on a schedule, and which payer value is which member.
- *  To change a common workflow for one inbox, the Owner copies it into their own (Workflows page). */
+ *  Editing a built-in filter gives the job its own copy. */
 export type PayerRule = { field: string; value: string; member: string };
 // seen: the workflow's `updated` when the job was saved or last reviewed; a newer one means the workflow changed since.
 export type ImportJob = { id: string; name?: string; on: boolean; schedule: Schedule; workflow: string; map: PayerRule[]; seen?: string };
@@ -34,10 +35,22 @@ export const DEFAULT_IMPORT_SCHEDULE: Schedule = { freq: "daily", time: "08:00",
 export const FIND_FIELDS: [FindField, string][] = [["from", "From"], ["to", "To (receiver)"], ["subject", "Subject"], ["body", "Body"], ["text", "Anywhere"]];
 export const FIND_OPS: [FindOp, string][] = [["contains", "contains"], ["not_contains", "does not contain"], ["starts_with", "starts with"], ["is", "is exactly"]];
 export const FIELD_TYPES: [FieldType, string][] = [["money", "Amount (₱)"], ["text", "Text"], ["last4", "Last digits"], ["date", "Date"]];
-export const LIMITS = { workflows: 20, groups: 5, conds: 12, fields: 15, pattern: 200, body: 10_000, jobs: 8, rules: 10 };
 const cond = (field: FindField, op: FindOp, value: string): FindCond => ({ field, op, value });
 
+// The real bank's "Transfer Money Details" alert. Every condition is in one group, so an email must meet ALL of them: being a
+// transfer alert is not enough, the money must have gone TO the family's account ending 316: the label and the account are
+// checked together, because 316 alone also matches money sent out of it. The table has no sender name, so the account it came
+// from is the only sign of who paid.
+const TRANSFER_TO = "Transfer To XXXX-XXX-316";
 export const BUILT_IN_WORKFLOWS: ImportWorkflow[] = [
+  { id: "wf-transfer-money", name: "Transfer Money alert", about: "Transfers into the account ending 316, from the bank's Transfer Money Details email.", builtIn: true, status: "Published", updated: "2026-11-05",
+    find: { match: [[cond("body", "contains", "Transfer Money Details"), cond("body", "contains", "Confirmation Number"), cond("body", "contains", "Transfer From"), cond("body", "contains", TRANSFER_TO)]], label: "", days: 30 },
+    fields: [
+      { key: "amount", label: "Amount", type: "money", after: "Amount" },
+      { key: "account", label: "Transfer From (last digits)", type: "last4", after: "Transfer From", payer: true },
+      { key: "reference", label: "Confirmation Number", type: "text", after: "Confirmation Number" },
+      { key: "date", label: "Transaction date", type: "date", after: "Transaction Date and Time" },
+    ] },
   { id: "wf-bank", name: "Bank transfer (sample bank)", about: "InstaPay and PESONet transfers received, from the bank's notification emails.", builtIn: true, status: "Published", updated: "2026-10-01",
     find: { match: [[cond("from", "contains", "notify@example-bank.test"), cond("subject", "contains", "Transfer Received"), cond("body", "contains", "Transfer From"), cond("body", "not_contains", "statement")]], label: "", days: 30 },
     fields: [
@@ -57,23 +70,52 @@ export const BUILT_IN_WORKFLOWS: ImportWorkflow[] = [
     ] },
 ];
 
+/** The real import, for the scheduler (lib/server/imports.ts). Runs at 12:00 AM Manila, just before the overdue check. */
+export const TRANSFER_JOB: ImportJob = { id: "ij-transfer", name: "Transfer Money import", on: true, schedule: { ...DEFAULT_IMPORT_SCHEDULE, time: "00:00" }, workflow: "wf-transfer-money", map: [{ field: "account", value: "091", member: "Babylyn" }] };
 // Family's Car Credit starts with an import job for each sample workflow, its members mapped.
 export const SAMPLE_IMPORT_JOBS: Record<string, ImportJob[]> = {
-  "family~car-credit": [
+  [CAR_CREDIT_ENTRY]: [
+    TRANSFER_JOB,
     { id: "ij-bank", name: "Bank transfers", on: true, schedule: DEFAULT_IMPORT_SCHEDULE, workflow: "wf-bank", map: [{ field: "sender", value: "BERNARDO SANTOS", member: "Bernz" }, { field: "account", value: "7710", member: "Babylyn" }, { field: "sender", value: "WILLIAM SANTOS", member: "Billy" }] },
     { id: "ij-wallet", name: "E-wallet received", on: true, schedule: { ...DEFAULT_IMPORT_SCHEDULE, time: "08:05" }, workflow: "wf-wallet", map: [{ field: "mobile", value: "3302", member: "Billy" }] },
   ],
 };
 
+// Jobs a goal starts with even when its saved list is older than them.
+const TIMER_JOBS: Record<string, ImportJob[]> = { [CAR_CREDIT_ENTRY]: [TRANSFER_JOB] };
+/** A goal's import jobs: its saved list, or the sample one until it is saved. */
+export const importJobsFor = (entryKey: string, settings?: { imports?: ImportJob[] }) => settings?.imports ?? SAMPLE_IMPORT_JOBS[entryKey] ?? [];
+/** The list a goal is first saved to the server with. Afterwards a deleted job stays deleted. */
+export function withTimerJobs(entryKey: string, jobs: ImportJob[]) {
+  return [...(TIMER_JOBS[entryKey] ?? []).filter((t) => !jobs.some((j) => j.id === t.id || j.workflow === t.workflow)), ...jobs];
+}
+export interface ParamRulesInput { w: ImportWorkflow; map: PayerRule[]; cards: UserCard[]; members: string[] }
+/** The workflow's payer fields are its target params: a job fills them in on Map payers to members. Adds a rule for each
+ *  member's card on the digits param (not digits two members share), and an empty row for any param with no rule yet. */
+export function paramRules({ w, map, cards, members }: ParamRulesInput): PayerRule[] {
+  const params = w.fields.filter((f) => f.payer), digits = params.find((f) => cardMatch(w, cards, members).fields.includes(f.key));
+  const held = cards.filter((c) => members.includes(c.user));
+  const fromCards = !digits ? [] : held.filter((c) => held.filter((x) => x.last4 === c.last4).length === 1 && !map.some((r) => r.field === digits.key && r.value === c.last4))
+    .map((c) => ({ field: digits.key, value: c.last4, member: c.user }));
+  const rules = [...map, ...fromCards];
+  return [...rules, ...params.filter((p) => !rules.some((r) => r.field === p.key)).map((p) => ({ field: p.key, value: "", member: members[0] ?? "" }))].slice(0, WORKFLOW_LIMITS.rules);
+}
+/** Whether a job runs on this date. The scheduler runs once a night, so the day counts and the time of day does not. */
+export function dueOn(s: Schedule, isoDate: string) {
+  const d = new Date(`${isoDate}T00:00:00Z`);
+  return s.freq === "weekly" ? d.getUTCDay() === s.weekday : s.freq === "monthly" ? d.getUTCDate() === s.day : true;
+}
 // ---------- Running a workflow on one email ----------
 const lower = (s: string) => s.toLowerCase();
 const filled = (g: FindCond[]) => g.filter((c) => c.value.trim());
 const condText = (c: FindCond, e: SampleEmail) => {
-  const body = e.body.slice(0, LIMITS.body);
+  const body = e.body.slice(0, WORKFLOW_LIMITS.body);
   return c.field === "text" ? `${e.subject}\n${body}` : c.field === "body" ? body : e[c.field];
 };
 function condPasses(c: FindCond, e: SampleEmail) {
-  const t = lower(condText(c, e).trim()), v = lower(c.value.trim());
+  // Spacing never decides a match: a table cell and its label may be split by a tab or a line break.
+  const flat = (s: string) => lower(s).replace(/\s+/g, " ").trim();
+  const t = flat(condText(c, e)), v = flat(c.value);
   return c.op === "contains" ? t.includes(v) : c.op === "not_contains" ? !t.includes(v) : c.op === "starts_with" ? t.startsWith(v) : t === v;
 }
 const condLabel = (c: FindCond) => `${c.field === "to" ? "To" : FIND_FIELDS.find(([f]) => f === c.field)![1]} ${FIND_OPS.find(([o]) => o === c.op)![1]} "${c.value.trim()}"`;
@@ -89,7 +131,7 @@ function findProblem(f: FindStep): string | null {
 
 /** A pattern the Admin may save, or why not. Long ones and repeats inside repeats ((a+)+) could freeze the import. */
 function patternProblem(p: string): string | null {
-  if (p.length > LIMITS.pattern) return `Keep it under ${LIMITS.pattern} characters.`;
+  if (p.length > WORKFLOW_LIMITS.pattern) return `Keep it under ${WORKFLOW_LIMITS.pattern} characters.`;
   if (/\([^)]*[+*}][^)]*\)\s*[+*{]/.test(p)) return "Repeats inside repeats, like (a+)+, can freeze the import. Simplify it.";
   try { new RegExp(p, "i"); } catch { return "This is not a valid pattern."; }
   return null;
@@ -142,10 +184,10 @@ function value(f: ExtractField, e: SampleEmail, body: string): string | number |
 }
 
 /** "Label: value" pairs in an email, to offer as JSON fields. Reads "Label: v", "Label<tab>v" and "Label  v" (2+ spaces). */
-type FoundPair = { label: string; after: string; value: string; type: FieldType };
+export type FoundPair = { label: string; after: string; value: string; type: FieldType };
 export function findPairs(body: string): FoundPair[] {
   const seen = new Set<string>();
-  return body.slice(0, LIMITS.body).split(/\r?\n/).flatMap((line) => {
+  return body.slice(0, WORKFLOW_LIMITS.body).split(/\r?\n/).flatMap((line) => {
     const m = line.trim().match(/^([\p{L}][\p{L}\p{N} .'’/&#-]{1,38}?)(?:\s*:\s+|\s*:$|\t+|\s{2,})(.*)$/u);
     if (!m || m[1].split(/\s+/).length > 6 || seen.has(lower(m[1].trim()))) return [];
     const label = m[1].trim().replace(/[.:]$/, ""), value = m[2].trim();
@@ -155,10 +197,57 @@ export function findPairs(body: string): FoundPair[] {
     return [{ label, after: m[1].trim(), value: value.slice(0, 80), type }];
   });
 }
+/** What a target field is for, in plain words. Amount, Reference and Date are single fields the import relies on by key. */
+export type FieldRole = "amount" | "payer" | "reference" | "date" | "other";
+export const FIELD_ROLES: [FieldRole, string][] = [["amount", "Amount"], ["payer", "Who paid"], ["reference", "Reference"], ["date", "Date"], ["other", "Extra info"]];
+export const roleOf = (f: ExtractField): FieldRole => f.payer ? "payer" : f.key === "amount" ? "amount" : f.key === "reference" ? "reference" : f.key === "date" ? "date" : "other";
+const SINGLE_KEY: Partial<Record<FieldRole, string>> = { amount: "amount", reference: "reference", date: "date" };
+const freeKey = (label: string, fields: ExtractField[]) => {
+  let key = keyOf(label);
+  for (let n = 2; fields.some((f) => f.key === key); n++) key = `${keyOf(label).slice(0, 27)}_${n}`;
+  return key;
+};
+/** A value found in an email as a target field with this role. */
+export function fieldFor(p: Pick<FoundPair, "label" | "after" | "type">, role: FieldRole, fields: ExtractField[]): ExtractField {
+  const type: FieldType = role === "amount" ? "money" : role === "date" ? "date" : role === "reference" ? "text" : role === "payer" ? (p.type === "last4" ? "last4" : "text") : p.type === "money" ? "money" : p.type;
+  return { key: SINGLE_KEY[role] ?? freeKey(p.label, fields), label: p.label, type, after: p.after, ...(role === "payer" && { payer: true }) };
+}
+/** Gives one field a role. Another field holding a single role gives it up and becomes extra info. */
+export function withRole(fields: ExtractField[], i: number, role: FieldRole) {
+  const single = SINGLE_KEY[role];
+  const rest = fields.map((f, j) => (j !== i && single && f.key === single ? { ...f, key: freeKey(f.label, fields) } : f));
+  const f = rest[i], others = rest.filter((_, j) => j !== i);
+  return rest.map((x, j) => (j === i ? { ...fieldFor(f, role, others), ...(f.pattern !== undefined && { pattern: f.pattern }), ...(f.source && { source: f.source }) } : x));
+}
+const roleGuess = (p: FoundPair, taken: Set<FieldRole>): FieldRole | null => {
+  const first = (r: FieldRole) => (taken.has(r) ? null : r);
+  if (p.type === "money") return first("amount");
+  if (p.type === "date") return first("date");
+  if (p.type === "last4") return /\b(to|receiver|recipient|credit)/i.test(p.label) ? null : first("payer");
+  if (/confirm|reference|\bref\b|trace|transaction (no|id)/i.test(p.label)) return first("reference");
+  return /\b(from|sender|payer)\b/i.test(p.label) ? first("payer") : null;
+};
+/** Conditions and target fields worked out from one sample email: its title, the account receiving the money, and the values
+ *  a payment needs. Conditions take the email's own text, so they match it however its label is punctuated. */
+export function suggestRules(e: SampleEmail): { conds: FindCond[]; fields: ExtractField[] } {
+  const pairs = findPairs(e.body), lines = e.body.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  const title = lines.find((l) => l.length <= WORKFLOW_LIMITS.condValue && !pairs.some((p) => l.startsWith(p.after)));
+  const receiver = pairs.find((p) => p.type === "last4" && /\b(to|receiver|recipient|credit)/i.test(p.label));
+  const receiverLine = receiver && lines.find((l) => l.startsWith(receiver.after))?.replace(/\s*\(.*$/, "").replace(/\s+/g, " ").slice(0, WORKFLOW_LIMITS.condValue);
+  const conds = [title && cond("body", "contains", title), receiverLine && cond("body", "contains", receiverLine), e.from.trim() && cond("from", "contains", e.from.trim()), !title && e.subject.trim() && cond("subject", "contains", e.subject.trim())].filter((c): c is FindCond => !!c);
+  const fields: ExtractField[] = [], taken = new Set<FieldRole>();
+  for (const p of pairs) {
+    const role = roleGuess(p, taken);
+    if (role) { taken.add(role); fields.push(fieldFor(p, role, fields)); }
+  }
+  return { conds, fields };
+}
 /** A JSON key from a label: "Transaction Ref No." → transaction_ref_no. */
 export const keyOf = (label: string) => lower(label).replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").replace(/^(\d)/, "f_$1").slice(0, 30) || "field";
 
 export type Json = Record<string, string | number | null>;
+/** The first payer field this email filled in: who sent the money. */
+export const payerOf = (w: ImportWorkflow, json: Json) => { const f = w.fields.find((x) => x.payer && json[x.key] != null); return f ? { field: f.key, value: String(json[f.key]) } : null; };
 export type RunResult =
   | { step: 1; why: string }                                 // not matched by Where
   | { step: 2; json: Json; deposit: boolean; why?: string }; // read into JSON
@@ -171,7 +260,7 @@ export function runWorkflow(w: Pick<ImportWorkflow, "fields">, e: SampleEmail, f
     if (groups.length > 1) return { step: 1, why: `Matches none of the ${groups.length} groups` };
     return { step: 1, why: `Needs ${condLabel(groups[0].find((c) => !condPasses(c, e))!)}` };
   }
-  const body = e.body.slice(0, LIMITS.body);
+  const body = e.body.slice(0, WORKFLOW_LIMITS.body);
   const json: Json = { messageId: e.id, ...Object.fromEntries(w.fields.map((f) => [f.key, value(f, e, body)])) };
   const amount = typeof json.amount === "number" && json.amount > 0;
   const payer = w.fields.some((f) => f.payer && json[f.key] != null);
@@ -190,9 +279,13 @@ export function gmailQuery(f: FindStep) {
   const match = groups.length > 1 ? `(${groups.map((g) => (g.length > 1 ? `(${g.join(" ")})` : g[0])).join(" OR ")})` : groups[0]?.join(" ");
   return [match, f.label.trim() && `label:${f.label.trim().replace(/\s+/g, "-")}`, f.days > 0 && `newer_than:${f.days}d`].filter(Boolean).join(" ") || "(every email)";
 }
-/** Which member a JSON belongs to: the first rule whose payer field equals its value (case does not matter). */
-export const memberFor = (map: PayerRule[], json: Json) =>
-  map.find((r) => r.value.trim() && json[r.field] != null && lower(String(json[r.field])) === lower(r.value.trim()))?.member ?? null;
+/** Which member a JSON belongs to: the first rule whose payer field equals its value (case does not matter), and with no
+ *  such rule, the one member whose card fits. A rule always wins, so an Owner can settle a shared card ending. */
+export const memberFor = (map: PayerRule[], json: Json, byCard?: CardMatch) =>
+  map.find((r) => r.value.trim() && json[r.field] != null && lower(String(json[r.field])) === lower(r.value.trim()))?.member ?? (byCard ? memberByCard(byCard, json) : null);
+/** What to match cards against in this workflow: its payer fields of last digits, except mobile numbers. */
+export const cardMatch = (w: ImportWorkflow, cards: UserCard[], members: string[]): CardMatch =>
+  ({ cards, members, fields: w.fields.filter((f) => f.payer && f.type === "last4" && !/mobile|phone/i.test(`${f.key} ${f.label}`)).map((f) => f.key) });
 
 // ---------- Checking what is stored ----------
 const str = (v: unknown, max: number) => (typeof v === "string" ? v.slice(0, max) : "");
@@ -203,7 +296,7 @@ const isCond = (c: unknown): c is FindCond => {
   return FIND_FIELDS.some(([f]) => f === x?.field) && FIND_OPS.some(([o]) => o === x.op) && typeof x.value === "string";
 };
 const parseMatch = (m: unknown): FindCond[][] =>
-  Array.isArray(m) ? m.filter(Array.isArray).slice(0, LIMITS.groups).map((g: unknown[]) => g.filter(isCond).slice(0, LIMITS.conds).map((c) => ({ field: c.field, op: c.op, value: c.value.slice(0, 80) }))) : [[]];
+  Array.isArray(m) ? m.filter(Array.isArray).slice(0, WORKFLOW_LIMITS.groups).map((g: unknown[]) => g.filter(isCond).slice(0, WORKFLOW_LIMITS.conds).map((c) => ({ field: c.field, op: c.op, value: c.value.slice(0, 80) }))) : [[]];
 /** Problems that stop a workflow from being saved, by field ("name", "fields.2.key"…). */
 export function workflowProblems(w: ImportWorkflow, all: ImportWorkflow[]): Record<string, string> {
   const e: Record<string, string> = {};
@@ -231,8 +324,8 @@ export function parseWorkflow(x: unknown): ImportWorkflow | null {
     id: w.id, name: str(w.name, 60), about: str(w.about, 200), status: w.status === "Published" ? "Published" : "Draft", updated: str(w.updated, 24),
     ...(typeof w.by === "string" && w.by.trim() && { by: w.by.slice(0, 60) }),
     find: { match: parseMatch(w.find.match), label: str(w.find.label, 40), days: days(w.find.days) ?? 30 },
-    fields: w.fields.filter((f) => typeof f?.key === "string" && FIELD_TYPES.some(([t]) => t === f.type)).slice(0, LIMITS.fields)
-      .map((f) => ({ key: str(f.key, 30), label: str(f.label, 40), type: f.type, after: str(f.after, 60), ...(typeof f.pattern === "string" && { pattern: f.pattern.slice(0, LIMITS.pattern) }),
+    fields: w.fields.filter((f) => typeof f?.key === "string" && FIELD_TYPES.some(([t]) => t === f.type)).slice(0, WORKFLOW_LIMITS.fields)
+      .map((f) => ({ key: str(f.key, 30), label: str(f.label, 40), type: f.type, after: str(f.after, 60), ...(typeof f.pattern === "string" && { pattern: f.pattern.slice(0, WORKFLOW_LIMITS.pattern) }),
         ...((f.source === "from" || f.source === "to" || f.source === "subject") && { source: f.source }), ...(f.payer === true && { payer: true }) })),
   };
 }
@@ -240,21 +333,13 @@ export function parseWorkflow(x: unknown): ImportWorkflow | null {
 /** A goal's import jobs from the settings cookie. schedule: the settings' own schedule check (lib/group-settings.ts). */
 export function parseImportJobs(jobs: unknown, schedule: (v: unknown) => Schedule | undefined): ImportJob[] | undefined {
   if (!Array.isArray(jobs)) return undefined;
-  return jobs.filter((j) => typeof j?.workflow === "string" && /^wf-[a-z0-9-]{1,60}$/.test(j.workflow) && Array.isArray(j.map)).slice(0, LIMITS.jobs).map((j, i) => ({
+  return jobs.filter((j) => typeof j?.workflow === "string" && /^wf-[a-z0-9-]{1,60}$/.test(j.workflow) && Array.isArray(j.map)).slice(0, WORKFLOW_LIMITS.jobs).map((j, i) => ({
     id: typeof j.id === "string" && /^ij-[a-z0-9-]{1,40}$/.test(j.id) ? j.id : `ij-${i + 1}`,
     ...(typeof j.name === "string" && j.name.trim() && { name: j.name.slice(0, 60) }),
     on: j.on !== false, schedule: schedule(j.schedule) ?? DEFAULT_IMPORT_SCHEDULE, workflow: j.workflow, ...(typeof j.seen === "string" && { seen: j.seen.slice(0, 24) }),
-    map: (j.map as PayerRule[]).filter((r) => typeof r?.field === "string" && typeof r.value === "string" && typeof r.member === "string").slice(0, LIMITS.rules)
+    map: (j.map as PayerRule[]).filter((r) => typeof r?.field === "string" && typeof r.value === "string" && typeof r.member === "string").slice(0, WORKFLOW_LIMITS.rules)
       .map((r) => ({ field: r.field.slice(0, 30), value: r.value.slice(0, 40), member: r.member.slice(0, 40) })),
   }));
-}
-
-/** How many import jobs run each workflow, over every goal's setup (the sample goal counts until it is saved). */
-export function jobCounts(all: Record<string, { imports?: ImportJob[] }>) {
-  const counts: Record<string, number> = {};
-  const jobs = [...Object.values(all).flatMap((s) => s.imports ?? []), ...Object.entries(SAMPLE_IMPORT_JOBS).filter(([k]) => !all[k]?.imports).flatMap(([, j]) => j)];
-  for (const j of jobs) counts[j.workflow] = (counts[j.workflow] ?? 0) + 1;
-  return counts;
 }
 
 /** A pasted email with private details hidden, for saving as a test email: the name part of email addresses, and long

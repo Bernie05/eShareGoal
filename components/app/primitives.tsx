@@ -1,11 +1,12 @@
 import Link from "next/link";
 import type { ComponentType, ReactNode } from "react";
-import { AlertTriangle, Inbox } from "lucide-react";
+import { AlertTriangle, Crown, Inbox } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 
 /** Semantic tones: success = progress/income, danger = expense/overdue, warning = pending, info = neutral. */
@@ -26,13 +27,21 @@ const statusTone: Record<string, Tone> = {
   Invited: "warning", Suspended: "danger", "Pending review": "warning", Revoked: "danger", Open: "warning", "In review": "info", Resolved: "success", Dismissed: "info",
 };
 
+interface StatusBadgeProps {
+  status: string;
+}
 /** Status is always icon-free text plus colour, never colour alone. */
-export function StatusBadge({ status }: { status: string }) {
+export function StatusBadge({ status }: StatusBadgeProps) {
   const label = status === "pending" ? "Pending" : status === "confirmed" ? "Confirmed" : status === "reversed" ? "Reversed" : status;
   return <Badge variant="secondary" className={cn("border-0", toneClass[statusTone[status] ?? "info"])}>{label}</Badge>;
 }
 
-export function ProgressBar({ value, label, tone = "success" }: { value: number; label: string; tone?: "success" | "primary" }) {
+interface ProgressBarProps {
+  value: number;
+  label: string;
+  tone?: "success" | "primary";
+}
+export function ProgressBar({ value, label, tone = "success" }: ProgressBarProps) {
   return (
     <div role="progressbar" aria-label={label} aria-valuenow={value} aria-valuemin={0} aria-valuemax={100} className="h-2 w-full overflow-hidden rounded-full bg-muted">
       <div className={cn("h-full rounded-full", tone === "success" ? "bg-success" : "bg-primary")} style={{ width: `${Math.min(100, value)}%` }} />
@@ -40,7 +49,12 @@ export function ProgressBar({ value, label, tone = "success" }: { value: number;
   );
 }
 
-export function PageHeader({ title, description, actions }: { title: string; description?: ReactNode; actions?: ReactNode }) {
+interface PageHeaderProps {
+  title: string;
+  description?: ReactNode;
+  actions?: ReactNode;
+}
+export function PageHeader({ title, description, actions }: PageHeaderProps) {
   return (
     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
       <div className="min-w-0">
@@ -52,7 +66,14 @@ export function PageHeader({ title, description, actions }: { title: string; des
   );
 }
 
-export function StatCard({ label, value, hint, tone, icon: Icon }: { label: string; value: ReactNode; hint?: ReactNode; tone?: Tone; icon?: ComponentType<{ className?: string }> }) {
+interface StatCardProps {
+  label: string;
+  value: ReactNode;
+  hint?: ReactNode;
+  tone?: Tone;
+  icon?: ComponentType<{ className?: string }>;
+}
+export function StatCard({ label, value, hint, tone, icon: Icon }: StatCardProps) {
   return (
     <Card size="sm">
       <CardContent className="space-y-1">
@@ -67,12 +88,49 @@ export function StatCard({ label, value, hint, tone, icon: Icon }: { label: stri
   );
 }
 
+interface ActiveSwitchProps {
+  name: string;
+  active: boolean;
+  onChange: (on: boolean) => void;
+  on: string;
+  off: string;
+  locked?: string;
+}
 /** Shown when a figure cannot be computed: never invent a number. */
-export const Unavailable = ({ why }: { why: string }) => (
+/** A card's Active switch (same look as Goal Templates): on = Owners can use it; off = hidden from them.
+ *  locked: why it cannot be switched right now (e.g. a job uses it), shown as the hint. */
+export function ActiveSwitch({ name, active, onChange, on, off, locked }: ActiveSwitchProps) {
+  return (
+    <label title={locked} className={cn("flex items-center gap-3 rounded-lg border px-3 py-2", active ? "border-success/40 bg-success/5" : "bg-muted/40")}>
+      <Switch checked={active} disabled={!!locked} onCheckedChange={onChange} aria-label={`${name}: ${active ? "active" : "not active"}`} />
+      <span className="min-w-0 text-sm">
+        <span className={cn("block font-medium", active ? "text-success" : "text-muted-foreground")}>{active ? "Active" : "Not active"}</span>
+        <span className="block text-xs text-muted-foreground">{locked ?? (active ? on : off)}</span>
+      </span>
+    </label>
+  );
+}
+
+interface OwnerLineProps {
+  names: string[];
+}
+/** Who owns a group, on its card and page. */
+export const OwnerLine = ({ names }: OwnerLineProps) => (
+  <span className="flex items-center gap-1.5 text-sm text-muted-foreground"><Crown className="size-3.5 shrink-0" aria-hidden />{names.length > 1 ? "Owners" : "Owner"}: <span className="font-medium text-foreground">{names.join(", ")}</span></span>
+);
+
+interface UnavailableProps {
+  why: string;
+}
+export const Unavailable = ({ why }: UnavailableProps) => (
   <span className="text-base font-medium text-muted-foreground" title={why}>Unavailable</span>
 );
 
-export function SectionTitle({ children, aside }: { children: ReactNode; aside?: ReactNode }) {
+interface SectionTitleProps {
+  children: ReactNode;
+  aside?: ReactNode;
+}
+export function SectionTitle({ children, aside }: SectionTitleProps) {
   return (
     <div className="flex items-center justify-between gap-2">
       <h2 className="text-base font-semibold">{children}</h2>
@@ -81,7 +139,12 @@ export function SectionTitle({ children, aside }: { children: ReactNode; aside?:
   );
 }
 
-export function EmptyState({ title, body, cta }: { title: string; body: string; cta?: { label: string; href: string } }) {
+interface EmptyStateProps {
+  title: string;
+  body: string;
+  cta?: { label: string; href: string };
+}
+export function EmptyState({ title, body, cta }: EmptyStateProps) {
   return (
     <Card>
       <CardContent className="flex flex-col items-center gap-3 py-14 text-center">
@@ -96,7 +159,12 @@ export function EmptyState({ title, body, cta }: { title: string; body: string; 
   );
 }
 
-export function ErrorState({ title = "Could not load this page", body = "Something went wrong on our side. Your data is safe. Try again in a moment.", retryHref }: { title?: string; body?: string; retryHref: string }) {
+interface ErrorStateProps {
+  title?: string;
+  body?: string;
+  retryHref: string;
+}
+export function ErrorState({ title = "Could not load this page", body = "Something went wrong on our side. Your data is safe. Try again in a moment.", retryHref }: ErrorStateProps) {
   return (
     <Alert variant="destructive">
       <AlertTriangle aria-hidden />
@@ -122,8 +190,14 @@ export function LoadingState() {
   );
 }
 
+interface StateGateProps {
+  state: "default" | "loading" | "empty" | "error";
+  empty: ReactNode;
+  retryHref: string;
+  children: ReactNode;
+}
 /** Renders the right UI for the preview ?state= value. Real screens will map query/fetch status the same way. */
-export function StateGate({ state, empty, retryHref, children }: { state: "default" | "loading" | "empty" | "error"; empty: ReactNode; retryHref: string; children: ReactNode }) {
+export function StateGate({ state, empty, retryHref, children }: StateGateProps) {
   if (state === "loading") return <LoadingState />;
   if (state === "error") return <ErrorState retryHref={retryHref} />;
   if (state === "empty") return <>{empty}</>;

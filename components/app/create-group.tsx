@@ -9,14 +9,17 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { groups } from "@/lib/demo-data";
-import { MAX_CREATED_GROUPS } from "@/lib/view-as";
 import { useCreatedGroups, useMe, useSaveCreatedGroups, useSendEmail } from "./view-as";
+import { BASE_PATH, MAX_CREATED_GROUPS } from "@/lib/constants";
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40) || "group";
 
+interface CreateGroupDialogProps {
+  trigger: ReactElement;
+}
 /** New group: anyone except the System Admin. Whoever creates a group is its Owner. */
-export function CreateGroupDialog({ trigger }: { trigger: ReactElement }) {
+export function CreateGroupDialog({ trigger }: CreateGroupDialogProps) {
   const created = useCreatedGroups();
   const me = useMe() ?? "Bernz";
   const save = useSaveCreatedGroups();
@@ -41,7 +44,7 @@ export function CreateGroupDialog({ trigger }: { trigger: ReactElement }) {
     setTried(true);
     if (full || Object.values(errors).some(Boolean)) return;
     const id = `my-${slug(name)}-${Date.now().toString(36).slice(-4)}`;
-    save([...created, { id, name: name.trim(), description: description.trim(), created: new Date().toISOString().slice(0, 10), by: me, invites: emails }], `/design-preview/group?group=${id}`);
+    save([...created, { id, name: name.trim(), description: description.trim(), created: new Date().toISOString().slice(0, 10), by: me, invites: emails }], `${BASE_PATH}/group?group=${id}`);
     toast.success(`${name.trim()} created`, { description: "You are its Owner." });
     for (const e of emails) send(e, `You are invited to ${name.trim()} on eShareGoal`);
     setOpen(false); setName(""); setDescription(""); setInvites(""); setTried(false);

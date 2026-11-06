@@ -3,11 +3,12 @@
 import { ImageUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+interface FilePickerProps {
+  id: string; fileName?: string; placeholder?: string; accept?: string; invalid?: boolean; describedBy?: string; onPick: (file?: File) => void;
+}
 /** File input styled like Input: the chosen file's name on the left, an upload icon on the right.
  *  The real input stays in the tab order (visually hidden), so keyboard and screen readers work as usual. */
-export function FilePicker({ id, fileName, placeholder = "Choose an image…", accept = "image/*", invalid, describedBy, onPick }: {
-  id: string; fileName?: string; placeholder?: string; accept?: string; invalid?: boolean; describedBy?: string; onPick: (file?: File) => void;
-}) {
+export function FilePicker({ id, fileName, placeholder = "Choose an image…", accept = "image/*", invalid, describedBy, onPick }: FilePickerProps) {
   return (
     <label className={cn(
       "flex h-8 w-full cursor-pointer items-center gap-2 rounded-lg border border-input bg-transparent px-2.5 text-sm transition-colors hover:bg-accent/40 dark:bg-input/30",

@@ -1,9 +1,10 @@
 import { addMonths, fmtDate, loanSummary, peso } from "./money";
+import { CAR_CREDIT, ISO_DATE_LOCALE, LOCALE, TIME_ZONE } from "./constants";
 
 // FICTIONAL DEMO DATA. Amounts in integer centavos. The sample history runs Nov 2025 - Oct 2026.
 // TODAY: the current date in the Philippines (YYYY-MM-DD). The one "today" for the whole app: form defaults,
 // due dates, "in N days", reminders and which month a share belongs to.
-export const TODAY = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Manila" });
+export const TODAY = new Date().toLocaleDateString(ISO_DATE_LOCALE, { timeZone: TIME_ZONE });
 
 // Group roles: the Owner changes anything in the group and its goals; a Member can only view. (System Admin is a site role, see lib/view-as.ts.)
 export type GroupRole = "Owner" | "Member";
@@ -88,7 +89,7 @@ export function summarize(added: Tx[] = [], fix: (t: Tx) => Tx | null = (t) => t
   // The 12 months up to the reference month.
   const monthly = Array.from({ length: 12 }, (_, i) => {
     const key = ym(addMonths(ym(TODAY) + "-01", i - 11));
-    const row: Record<string, number | string> = { month: new Date(key + "-01T00:00:00Z").toLocaleDateString("en-PH", { month: "short", timeZone: "UTC" }) };
+    const row: Record<string, number | string> = { month: new Date(key + "-01T00:00:00Z").toLocaleDateString(LOCALE, { month: "short", timeZone: "UTC" }) };
     for (const m of members) row[m.id] = sum(live.filter((t) => t.type === "deposit" && t.memberId === m.id && ym(t.date) === key)) / 100;
     row.incoming = sum(live.filter((t) => t.type === "deposit" && ym(t.date) === key)) / 100;
     row.outgoing = sum(live.filter((t) => t.type !== "deposit" && ym(t.date) === key)) / 100;
@@ -111,20 +112,9 @@ export type Goal = { id: string; name: string; type: GoalType; status: "Active" 
 export type GoalInfo = { about: string; target: string; started: string; joinedBy: string[] };
 export type Group = { id: string; name: string; description: string; members: number; created: string; goals: Goal[]; archived?: boolean };
 export const groups: Group[] = [
-  { id: "family", name: "Family", description: "Household money and health goals.", members: 3, created: "2025-10-18", goals: [
-    { id: "car-credit", name: "Car Credit", type: "loan", status: "Active", progress: totals.pct, metric: `${totals.installmentsDone}/60 installments`, last: "2 days ago", joined: true },
-    { id: "emergency-fund", name: "Emergency Fund", type: "shared_money", status: "Active", progress: 42, metric: "₱126,000 of ₱300,000", last: "5 days ago", joined: true },
-    { id: "family-fitness", name: "Family Fitness", type: "fitness", status: "Active", progress: 60, metric: "3 of 5 weekly workouts", last: "Today", joined: true },
-    { id: "grocery-budget", name: "Grocery Budget", type: "shared_money", status: "Active", progress: 75, metric: "₱9,000 of ₱12,000 this month", last: "3 days ago", joined: false,
-      info: { about: "One shared budget for the weekly grocery run, so no one pays more than their share.", target: "₱12,000 every month", started: "2026-06-01", joinedBy: ["Babylyn", "Billy"] } },
+  { id: "family", name: "Family", description: "Household goals.", members: 3, created: "2025-10-18", goals: [
+    { id: CAR_CREDIT, name: "Car Credit", type: "loan", status: "Active", progress: totals.pct, metric: `${totals.installmentsDone}/60 installments`, last: "2 days ago", joined: true },
   ] },
-  { id: "friends", name: "Friends", description: "Trips and challenges with the barkada.", members: 5, created: "2026-02-03", goals: [
-    { id: "vacation-fund", name: "Vacation Fund", type: "shared_money", status: "Active", progress: 68, metric: "₱68,000 of ₱100,000", last: "Yesterday", joined: true },
-    { id: "fitness-30", name: "30-Day Fitness Challenge", type: "fitness", status: "Active", progress: 40, metric: "Day 12 of 30", last: "Today", joined: true },
-    { id: "book-club", name: "Book Club: 12 Books", type: "tasks", status: "Paused", progress: 25, metric: "3 of 12 books", last: "3 weeks ago", joined: false,
-      info: { about: "Read one book a month together and meet on the last Sunday to talk about it.", target: "12 books in 12 months", started: "2026-07-01", joinedBy: ["Carla", "Ella", "Migs"] } },
-  ] },
-  { id: "old-team", name: "Office Project Team", description: "Closed in September.", members: 4, created: "2025-11-02", archived: true, goals: [] },
 ];
 
 // --- Import candidates (mock Gmail, fictional) ---
@@ -134,7 +124,7 @@ export const candidates: Candidate[] = [
   { id: "c1", amount: 1_200_000, date: "2026-10-24", ref: "DEMO-BE2410", suffix: "4821", member: "Bernz", goal: "Car Credit", confidence: 96, why: "Account suffix 4821 and alias B. Santos match Bernz", status: "Pending Review", msg: "msg-demo-7f3a" },
   { id: "c2", amount: 800_000, date: "2026-10-23", ref: "DEMO-XX0991", suffix: "7710", member: "Babylyn or Billy?", goal: "Car Credit", confidence: 54, why: "Suffix 7710 is on two members' rules; choose one", status: "Pending Review", msg: "msg-demo-2c91", ambiguous: true },
   { id: "c3", amount: 1_200_000, date: "2026-10-24", ref: "DEMO-BE2410", suffix: "4821", member: "Bernz", goal: "Car Credit", confidence: 96, why: "Same reference as the first candidate", status: "Duplicate", msg: "msg-demo-7f3b" },
-  { id: "c4", amount: 600_000, date: "2026-10-20", ref: "DEMO-BI2410", suffix: "3302", member: "Billy", goal: "Emergency Fund", confidence: 91, why: "Alias Billy S. matches", status: "Confirmed", msg: "msg-demo-aa10" },
+  { id: "c4", amount: 600_000, date: "2026-10-20", ref: "DEMO-BI2410", suffix: "3302", member: "Billy", goal: "Car Credit", confidence: 91, why: "Alias Billy S. matches", status: "Confirmed", msg: "msg-demo-aa10" },
   { id: "c5", amount: 0, date: "2026-10-19", ref: "", suffix: "", member: "Unknown", goal: "-", confidence: 0, why: "Amount could not be parsed from the email body", status: "Error", msg: "msg-demo-be05" },
 ];
 
@@ -164,7 +154,7 @@ const bernzActivity: MyGroupActivity[] = [
     groupId: "family", last: "Yesterday, 9:14 AM",
     goals: [
       {
-        ...base("family", "car-credit"),
+        ...base("family", CAR_CREDIT),
         stats: [
           { label: "You put in", value: peso(myPut), hint: `${Math.round((myPut / totals.contributions) * 100)}% of all deposits, incl. pending` },
           { label: "Installments paid", value: `${totals.installmentsDone}/60`, hint: "Paid to the lender monthly" },
@@ -173,74 +163,19 @@ const bernzActivity: MyGroupActivity[] = [
         chart: { title: "Your deposits per month", unit: "peso", data: series(byMonth(depositsOf(ME))) },
         recent: [["Deposit of ₱12,000.00 recorded", "Yesterday, 9:14 AM"], ["Installment 11/60 paid to the lender", "Oct 5"], ["Confirmed Billy's imported deposit", "Oct 3"]],
       },
-      {
-        ...base("family", "emergency-fund"),
-        stats: [
-          { label: "You put in", value: peso(4_200_000), hint: "33% of the fund" },
-          { label: "Fund so far", value: peso(12_600_000), hint: `of ${peso(30_000_000)} target` },
-          { label: "Deposits you made", value: "7", hint: "Since April" },
-        ],
-        chart: { title: "Your deposits per month", unit: "peso", data: series([0, 0, 0, 0, 0, 6000, 6000, 6000, 6000, 6000, 6000, 6000]) },
-        recent: [["Deposit of ₱6,000.00 recorded", "Oct 20"], ["Deposit of ₱6,000.00 recorded", "Sep 20"]],
-      },
-      {
-        ...base("family", "family-fitness"),
-        stats: [
-          { label: "Workouts this month", value: "5", hint: "Logged by you" },
-          { label: "This week", value: "3 of 5", hint: "Weekly target" },
-          { label: "Streak", value: "4 weeks", hint: "Weeks with at least 3 workouts" },
-        ],
-        chart: { title: "Your workouts per month", unit: "count", data: series([0, 0, 0, 0, 0, 0, 2, 4, 5, 4, 6, 5]) },
-        recent: [["Logged a 30-minute run", "Oct 22"], ["Logged a strength session", "Oct 20"]],
-      },
-    ],
-  },
-  {
-    groupId: "friends", last: "Today, 6:30 AM",
-    goals: [
-      {
-        ...base("friends", "vacation-fund"),
-        stats: [
-          { label: "You put in", value: peso(1_800_000), hint: "26% of the fund" },
-          { label: "Fund so far", value: peso(6_800_000), hint: `of ${peso(10_000_000)} target` },
-          { label: "Deposits you made", value: "9", hint: "Since February" },
-        ],
-        chart: { title: "Your deposits per month", unit: "peso", data: series([0, 0, 0, 2000, 2000, 2000, 2000, 2000, 2000, 2000, 2000, 2000]) },
-        recent: [["Deposit of ₱2,000.00 recorded", "Oct 15"], ["Deposit of ₱2,000.00 recorded", "Sep 15"]],
-      },
-      {
-        ...base("friends", "fitness-30"),
-        stats: [
-          { label: "Day", value: "12 of 30", hint: "Challenge started Oct 14" },
-          { label: "Your check-ins", value: "12/12", hint: "No missed days" },
-          { label: "Group rank", value: "1st of 5", hint: "By check-ins" },
-        ],
-        chart: { title: "Your check-ins per month", unit: "count", data: series([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 12]) },
-        recent: [["Checked in on day 12", "Today, 6:30 AM"], ["Checked in on day 11", "Yesterday"]],
-      },
     ],
   },
 ];
 
 // --- Group overview details per group (Family figures come from the ledger above) ---
-export type GroupDetail = { funds: number; invite: string; activity: [string, string, string][] };
+export type GroupDetail = { funds: number; activity: [string, string, string][] };
 export const groupDetails: Record<string, GroupDetail> = {
   family: {
-    funds: totals.available, invite: "FAM-7K2Q-DEMO",
+    funds: totals.available,
     activity: [
       ["Bernz", "added a deposit of ₱12,000.00 to Car Credit", "Yesterday, 9:14 AM"],
       ["Bernz", "confirmed Babylyn's imported deposit", "2 days ago"],
-      ["Bernz", "recorded Billy's workout in Family Fitness", "Today, 6:30 AM"],
       ["Bernz", "paid installment 11/60 to the lender", "Oct 5"],
-    ],
-  },
-  friends: {
-    funds: 6_800_000, invite: "FRN-3M8P-DEMO",
-    activity: [
-      ["Carla", "recorded Bernz's day 12 check-in", "Today, 6:30 AM"],
-      ["Carla", "recorded Ella's deposit of ₱2,000.00 to Vacation Fund", "Yesterday"],
-      ["Carla", "paused Book Club: 12 Books", "3 weeks ago"],
-      ["Carla", "recorded Dino's day 11 check-in", "Yesterday"],
     ],
   },
 };
@@ -252,7 +187,7 @@ const babylynActivity: MyGroupActivity[] = [
     groupId: "family", last: "Oct 20",
     goals: [
       {
-        ...base("family", "car-credit"),
+        ...base("family", CAR_CREDIT),
         stats: [
           { label: "You put in", value: peso(babylynPut), hint: `${Math.round((babylynPut / totals.contributions) * 100)}% of all deposits, incl. pending` },
           { label: "Installments paid", value: `${totals.installmentsDone}/60`, hint: "Paid to the lender by the Owner" },
@@ -260,36 +195,6 @@ const babylynActivity: MyGroupActivity[] = [
         ],
         chart: { title: "Your deposits per month", unit: "peso", data: series(byMonth(depositsOf("babylyn"))) },
         recent: [["Deposit of ₱8,000.00 recorded by Bernz", "Oct 20"], ["Comprehensive insurance paid (₱18,500.00)", "Jan 12"]],
-      },
-      {
-        ...base("family", "emergency-fund"),
-        stats: [
-          { label: "You put in", value: peso(4_200_000), hint: "33% of the fund" },
-          { label: "Fund so far", value: peso(12_600_000), hint: `of ${peso(30_000_000)} target` },
-          { label: "Deposits you made", value: "7", hint: "Since April" },
-        ],
-        chart: { title: "Your deposits per month", unit: "peso", data: series([0, 0, 0, 0, 0, 6000, 6000, 6000, 6000, 6000, 6000, 6000]) },
-        recent: [["Deposit of ₱6,000.00 recorded by Bernz", "Oct 20"], ["Deposit of ₱6,000.00 recorded by Bernz", "Sep 20"]],
-      },
-      {
-        ...base("family", "family-fitness"),
-        stats: [
-          { label: "Workouts this month", value: "4", hint: "Logged for you" },
-          { label: "This week", value: "2 of 5", hint: "Weekly target" },
-          { label: "Streak", value: "2 weeks", hint: "Weeks with at least 3 workouts" },
-        ],
-        chart: { title: "Your workouts per month", unit: "count", data: series([0, 0, 0, 0, 0, 0, 1, 3, 4, 3, 5, 4]) },
-        recent: [["Strength session logged by Bernz", "Oct 20"]],
-      },
-      {
-        ...base("family", "grocery-budget"),
-        stats: [
-          { label: "You put in this month", value: peso(450_000), hint: "Half of the budget used so far" },
-          { label: "Months paid", value: "5 of 5", hint: "Since June" },
-          { label: "Budget this month", value: peso(900_000), hint: `of ${peso(1_200_000)}` },
-        ],
-        chart: { title: "Your grocery share per month", unit: "peso", data: series([0, 0, 0, 0, 0, 0, 0, 4500, 4500, 4500, 4500, 4500]) },
-        recent: [["Grocery share of ₱4,500.00 recorded by Bernz", "Oct 1"], ["Grocery share of ₱4,500.00 recorded by Bernz", "Sep 1"]],
       },
     ],
   },

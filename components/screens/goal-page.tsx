@@ -15,9 +15,7 @@ import { NativeSelect } from "@/components/ui/native-select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { PageHeader, ProgressBar, StatCard, StatusBadge, toneText } from "@/components/app/primitives";
 import { templateIcon } from "@/components/app/dashboard-preview";
-import {
-  MAX_PROOF_UPLOAD, newRecordId, newSubmissionId, PAYMENT_METHODS, shrinkImage, useGoalRecords, useGoalSubmissions, writeRecords, writeSubmissions, type GoalRecord, type Submission,
-} from "@/components/app/records";
+import { newRecordId, newSubmissionId, PAYMENT_METHODS, shrinkImage, useGoalRecords, useGoalSubmissions, writeRecords, writeSubmissions, type GoalRecord, type Submission } from "@/components/app/records";
 import { OwnerOnly, RoleBadge, useCreatedGoals, useMe, useSaveCreatedGoals, ViewAsProvider } from "@/components/app/view-as";
 import { Textarea } from "@/components/ui/textarea";
 import { FilePicker } from "@/components/app/file-picker";
@@ -29,11 +27,15 @@ import { widget, type FieldKind, type WidgetId } from "@/lib/goal-templates";
 import { addMonths, fmtDate, peso } from "@/lib/money";
 import { TODAY } from "@/lib/demo-data";
 import { cn } from "@/lib/utils";
+import { BASE_PATH, LOCALE, MAX_PROOF_UPLOAD } from "@/lib/constants";
 
 const fmtValue = (kind: FieldKind, v: string) => (kind === "money" ? peso(Math.round(Number(v.replace(/,/g, "")) * 100)) : kind === "date" ? fmtDate(v) : v);
-const Empty = ({ children }: { children: ReactNode }) => <p className="flex items-center gap-2 rounded-lg border border-dashed px-3 py-6 text-sm text-muted-foreground"><ChartColumn className="size-4 shrink-0" aria-hidden />{children}</p>;
+interface EmptyProps {
+  children: ReactNode;
+}
+const Empty = ({ children }: EmptyProps) => <p className="flex items-center gap-2 rounded-lg border border-dashed px-3 py-6 text-sm text-muted-foreground"><ChartColumn className="size-4 shrink-0" aria-hidden />{children}</p>;
 const months = Array.from({ length: 6 }, (_, i) => addMonths("2026-05-01", i).slice(0, 7)); // May-Oct 2026
-const monthLabel = (m: string) => new Date(`${m}-01T00:00:00Z`).toLocaleDateString("en-PH", { month: "short", timeZone: "UTC" });
+const monthLabel = (m: string) => new Date(`${m}-01T00:00:00Z`).toLocaleDateString(LOCALE, { month: "short", timeZone: "UTC" });
 
 /** Everything the dashboard shows, worked out from the goal's records. */
 // "single": one shared target for the group. "each": every participant has their own copy of the target,
@@ -61,12 +63,19 @@ function summarize(g: CreatedGoal, records: GoalRecord[], members: string[]) {
   const pct = each ? (byMember.length ? clamp(byMember.reduce((s, b) => s + b.pct, 0) / byMember.length) : 0) : total > 0 ? clamp((done / total) * 100) : 0;
   const reached = byMember.filter((b) => b.reached).length;
   const unit = g.values["Unit"] ?? g.values["Unit (kg, workouts…)"] ?? "";
-  const show = (n: number) => (m === "money" ? peso(n) : m === "checklist" ? `${n} ${n === 1 ? "task" : "tasks"}` : `${n.toLocaleString("en-PH")}${unit ? ` ${unit}` : ""}`);
+  const show = (n: number) => (m === "money" ? peso(n) : m === "checklist" ? `${n} ${n === 1 ? "task" : "tasks"}` : `${n.toLocaleString(LOCALE)}${unit ? ` ${unit}` : ""}`);
   return { m, target, goalTarget, unitTarget, done, total, pct, byMember, show, tasks, signed, each, people, reached };
 }
 
+interface RecordDialogProps {
+  g: CreatedGoal;
+  members: string[];
+  record: GoalRecord | null;
+  open: boolean;
+  onClose: () => void;
+}
 // ---------- Add or edit a record (Owner only) ----------
-function RecordDialog({ g, members, record, open, onClose }: { g: CreatedGoal; members: string[]; record: GoalRecord | null; open: boolean; onClose: () => void }) {
+function RecordDialog({ g, members, record, open, onClose }: RecordDialogProps) {
   const records = useGoalRecords(g.id);
   const m = g.template.measure;
   const blank: GoalRecord = { id: "", member: members[0] ?? "", date: TODAY, note: "", amount: 0, direction: m === "money" ? "in" : undefined, title: m === "checklist" ? "" : undefined, done: m === "checklist" ? false : undefined };
@@ -108,8 +117,14 @@ function RecordDialog({ g, members, record, open, onClose }: { g: CreatedGoal; m
   );
 }
 
+interface SubmitDialogProps {
+  g: CreatedGoal;
+  me: string;
+  open: boolean;
+  onClose: () => void;
+}
 // ---------- A Member submits a transaction with a receipt image; nothing changes until the Owner approves it ----------
-function SubmitDialog({ g, me, open, onClose }: { g: CreatedGoal; me: string; open: boolean; onClose: () => void }) {
+function SubmitDialog({ g, me, open, onClose }: SubmitDialogProps) {
   const subs = useGoalSubmissions(g.id);
   const m = g.template.measure;
   const [amount, setAmount] = useState("");
@@ -173,8 +188,31 @@ function SubmitDialog({ g, me, open, onClose }: { g: CreatedGoal; me: string; op
   );
 }
 
-// ---------- Edit the goal itself (Owner only) ----------
-function EditGoalDialog({ g, members, open, onClose }: { g: CreatedGoal; members: string[]; open: boolean; onClose: () => void }) {
+interface EditGoalDialogProps {
+  g: CreatedGoal;
+  members: string[];
+  open: boolean;
+  onClose: () => void;
+}
+// ---------- Edit the goal itself (Owner only): on the goal page, and in the group's Edit group ----------
+function EditGoalDialog({ g, members, open, onClose }: EditGoalDialogProps) {
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>Edit goal</DialogTitle><DialogDescription>{g.template.name} template. Records are kept.</DialogDescription></DialogHeader>
+        <EditGoalForm g={g} members={members} onDone={onClose} />
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+interface EditGoalFormProps {
+  g: CreatedGoal;
+  members: string[];
+  onDone: () => void;
+}
+/** The goal's details form: name, its template's fields, status and who it is for. Calls onDone after saving or Cancel. */
+export function EditGoalForm({ g, members, onDone: onClose }: EditGoalFormProps) {
   const all = useCreatedGoals();
   const save = useSaveCreatedGoals();
   const [name, setName] = useState(g.name);
@@ -192,9 +230,7 @@ function EditGoalDialog({ g, members, open, onClose }: { g: CreatedGoal; members
     toast.success("Goal updated"); onClose();
   };
   return (
-    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent>
-        <DialogHeader><DialogTitle>Edit goal</DialogTitle><DialogDescription>{g.template.name} template. Records are kept.</DialogDescription></DialogHeader>
+    <>
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="space-y-1.5 sm:col-span-2"><Label htmlFor="eg-name">Goal name</Label><Input id="eg-name" value={name} onChange={(e) => setName(e.target.value)} />{tried && nameErr && <p role="alert" className="text-xs text-destructive">{nameErr}</p>}</div>
           {g.template.fields.map((f) => {
@@ -221,13 +257,22 @@ function EditGoalDialog({ g, members, open, onClose }: { g: CreatedGoal; members
           </fieldset>
         </div>
         <DialogFooter><Button variant="outline" onClick={onClose}>Cancel</Button><Button onClick={submit}>Save changes</Button></DialogFooter>
-      </DialogContent>
-    </Dialog>
+    </>
   );
 }
 
+interface SectionProps {
+  id: WidgetId;
+  g: CreatedGoal;
+  members: string[];
+  records: GoalRecord[];
+  onEdit: (r: GoalRecord) => void;
+  onDelete: (r: GoalRecord) => void;
+  onAdd: () => void;
+  onProof: (submissionId: string) => void;
+}
 /** One dashboard section, filled from the records. */
-function Section({ id, g, members, records, onEdit, onDelete, onAdd, onProof }: { id: WidgetId; g: CreatedGoal; members: string[]; records: GoalRecord[]; onEdit: (r: GoalRecord) => void; onDelete: (r: GoalRecord) => void; onAdd: () => void; onProof: (submissionId: string) => void }) {
+function Section({ id, g, members, records, onEdit, onDelete, onAdd, onProof }: SectionProps) {
   const subs = useGoalSubmissions(g.id);
   const s = summarize(g, records, members);
   const w = widget(id);
@@ -349,9 +394,15 @@ function Section({ id, g, members, records, onEdit, onDelete, onAdd, onProof }: 
   }
 }
 
+interface CreatedGoalScreenProps {
+  goal: CreatedGoal;
+  groupName: string;
+  members: string[];
+  role: ViewAs;
+}
 // ---------- A goal created from a template: its dashboard is the template's sections, in order ----------
 // role: the viewer's role in this goal's group. Owners add records and edit or delete the goal; Members and the System Admin only view.
-export function CreatedGoalScreen({ goal: g, groupName, members, role }: { goal: CreatedGoal; groupName: string; members: string[]; role: ViewAs }) {
+export function CreatedGoalScreen({ goal: g, groupName, members, role }: CreatedGoalScreenProps) {
   const all = useCreatedGoals();
   const save = useSaveCreatedGoals();
   const records = useGoalRecords(g.id);
@@ -411,7 +462,7 @@ export function CreatedGoalScreen({ goal: g, groupName, members, role }: { goal:
       <Dialog open={confirm} onOpenChange={setConfirm}>
         <DialogContent>
           <DialogHeader><DialogTitle>Delete {g.name}?</DialogTitle><DialogDescription>{records.length ? `Its ${records.length} ${records.length === 1 ? "record is" : "records are"} deleted too.` : "It has no records yet, so nothing else is lost."}</DialogDescription></DialogHeader>
-          <DialogFooter><Button variant="outline" onClick={() => setConfirm(false)}>Cancel</Button><Button variant="destructive" onClick={() => { writeRecords(g.id, []); writeSubmissions(g.id, []); save(all.filter((x) => x.id !== g.id), `/design-preview/group?group=${g.groupId}`); toast(`${g.name} deleted`); }}>Delete goal</Button></DialogFooter>
+          <DialogFooter><Button variant="outline" onClick={() => setConfirm(false)}>Cancel</Button><Button variant="destructive" onClick={() => { writeRecords(g.id, []); writeSubmissions(g.id, []); save(all.filter((x) => x.id !== g.id), `${BASE_PATH}/group?group=${g.groupId}`); toast(`${g.name} deleted`); }}>Delete goal</Button></DialogFooter>
         </DialogContent>
       </Dialog>
     </ViewAsProvider>
@@ -425,10 +476,14 @@ function useGoalLine(g: CreatedGoal, members: string[]) {
   const metric = s.each ? `${s.reached} of ${s.people.length} members reached ${s.m === "checklist" ? "their tasks" : s.unitTarget ? s.show(s.unitTarget) : "their goal"}` : s.m === "checklist" ? `${s.done} of ${s.total} tasks done` : s.total ? `${s.show(s.done)} of ${s.show(s.goalTarget)}` : records.length ? `${s.show(s.done)} so far` : "No records yet";
   return { records, s, metric };
 }
-const goalHref = (g: CreatedGoal) => `/design-preview/my-goal?goal=${g.id}`;
+const goalHref = (g: CreatedGoal) => `${BASE_PATH}/my-goal?goal=${g.id}`;
 
+interface CreatedGoalCardProps {
+  g: CreatedGoal;
+  members?: string[];
+}
 /** Same card as the sample goals (icon, status, name, type, progress), for goals created in the preview. */
-export function CreatedGoalCard({ g, members = ["Bernz"] }: { g: CreatedGoal; members?: string[] }) {
+export function CreatedGoalCard({ g, members = ["Bernz"] }: CreatedGoalCardProps) {
   const Icon = templateIcon[g.template.icon];
   const { s, metric } = useGoalLine(g, members);
   return (
@@ -448,14 +503,23 @@ export function CreatedGoalCard({ g, members = ["Bernz"] }: { g: CreatedGoal; me
   );
 }
 
+interface CreatedGoalProgressRowProps {
+  g: CreatedGoal;
+  members: string[];
+}
 /** Same row as the sample goals on My Groups: name, bar, percent. */
-export function CreatedGoalProgressRow({ g, members }: { g: CreatedGoal; members: string[] }) {
+export function CreatedGoalProgressRow({ g, members }: CreatedGoalProgressRowProps) {
   const { s } = useGoalLine(g, members);
   return <li className="flex items-center gap-3 text-sm"><span className="w-40 truncate">{g.name}</span><div className="flex-1"><ProgressBar value={s.pct} label={`${g.name} progress`} /></div><span className="num w-9 text-right text-xs text-muted-foreground">{s.pct}%</span></li>;
 }
 
+interface CreatedGoalAccordionItemProps {
+  g: CreatedGoal;
+  members: string[];
+  panelClass: string;
+}
 /** Same Dashboard accordion item as the sample goals: progress in the header, a small dashboard inside. */
-export function CreatedGoalAccordionItem({ g, members, panelClass }: { g: CreatedGoal; members: string[]; panelClass: string }) {
+export function CreatedGoalAccordionItem({ g, members, panelClass }: CreatedGoalAccordionItemProps) {
   const Icon = templateIcon[g.template.icon];
   const { records, s, metric } = useGoalLine(g, members);
   const data = months.map((mo) => ({ month: monthLabel(mo), value: records.filter((r) => r.date.startsWith(mo) && r.direction !== "out").reduce((t, r) => t + (s.m === "money" ? r.amount / 100 : s.m === "checklist" ? 1 : r.amount), 0) }));

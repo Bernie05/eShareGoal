@@ -5,33 +5,50 @@ import { createContext, useContext, useState, type ReactNode } from "react";
 import { Crown, Eye, ShieldCheck } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { NativeSelect } from "@/components/ui/native-select";
-import { CREATED_GROUPS_COOKIE, EMAIL_MODE_COOKIE, MAX_CREATED_GROUPS, viewAsLabel, type CreatedGroup, type EmailMode, type ViewAs } from "@/lib/view-as";
-import { ACCOUNT_COOKIE, ACCOUNTS, type Account } from "@/lib/accounts";
+import { viewAsLabel, type CreatedGroup, type EmailMode, type ViewAs } from "@/lib/view-as";
+import { ACCOUNTS, VIEW_AS_ACCOUNTS, type Account } from "@/lib/accounts";
 import { toast } from "sonner";
-import { CREATED_GOALS_COOKIE, MAX_CREATED_GOALS, type CreatedGoal } from "@/lib/created-goals";
+import { type CreatedGoal } from "@/lib/created-goals";
 import { cn } from "@/lib/utils";
+import { ACCOUNT_COOKIE, CREATED_GOALS_COOKIE, CREATED_GROUPS_COOKIE, EMAIL_MODE_COOKIE, MAX_CREATED_GOALS, MAX_CREATED_GROUPS } from "@/lib/constants";
 
 // The account the preview is viewed as (who "you" are), and the role on the current page (Owner/Member per group, or admin).
 const AccountContext = createContext<Account>("admin");
-export const AccountProvider = ({ value, children }: { value: Account; children: ReactNode }) => <AccountContext.Provider value={value}>{children}</AccountContext.Provider>;
+interface AccountProviderProps {
+  value: Account;
+  children: ReactNode;
+}
+export const AccountProvider = ({ value, children }: AccountProviderProps) => <AccountContext.Provider value={value}>{children}</AccountContext.Provider>;
 export const useAccount = () => useContext(AccountContext);
 /** The current account name ("Bernz", "Babylyn"), or null for the System Admin. */
 export const useMe = () => { const a = useAccount(); return a === "admin" ? null : ACCOUNTS[a].name; };
 
 const ViewAsContext = createContext<ViewAs>("admin");
-export const ViewAsProvider = ({ value, children }: { value: ViewAs; children: ReactNode }) => <ViewAsContext.Provider value={value}>{children}</ViewAsContext.Provider>;
+interface ViewAsProviderProps {
+  value: ViewAs;
+  children: ReactNode;
+}
+export const ViewAsProvider = ({ value, children }: ViewAsProviderProps) => <ViewAsContext.Provider value={value}>{children}</ViewAsContext.Provider>;
 export const useViewAs = () => useContext(ViewAsContext);
 
+interface OwnerOnlyProps {
+  children: ReactNode;
+  fallback?: ReactNode;
+}
 /** Renders its children only for the group Owner. The UI only hides actions; the server must enforce it too. */
-export function OwnerOnly({ children, fallback = null }: { children: ReactNode; fallback?: ReactNode }) {
+export function OwnerOnly({ children, fallback = null }: OwnerOnlyProps) {
   return useViewAs() === "owner" ? children : fallback;
 }
 
 const roleIcon = { owner: Crown, member: Eye, admin: ShieldCheck } as const;
 const roleTone = { owner: "bg-primary/10 text-primary", member: "bg-muted text-muted-foreground", admin: "bg-warning-soft text-warning" } as const;
 
+interface RoleBadgeProps {
+  role?: ViewAs;
+  className?: string;
+}
 /** Role indicator. Pass `role` for a fixed role, or leave it out to show the role on the current page. */
-export function RoleBadge({ role, className }: { role?: ViewAs; className?: string }) {
+export function RoleBadge({ role, className }: RoleBadgeProps) {
   const current = useViewAs();
   const r = role ?? current;
   const Icon = roleIcon[r];
@@ -50,7 +67,7 @@ export function ViewAsSwitch() {
         onChange={(e) => { document.cookie = `${ACCOUNT_COOKIE}=${e.target.value}; path=/; max-age=31536000; samesite=lax`; router.refresh(); }}
         className="h-8 w-36 text-sm sm:w-44"
       >
-        {(Object.keys(ACCOUNTS) as Account[]).map((a) => <option key={a} value={a}>{ACCOUNTS[a].label}</option>)}
+        {VIEW_AS_ACCOUNTS.map((a) => <option key={a} value={a}>{ACCOUNTS[a].label}</option>)}
       </NativeSelect>
     </label>
   );
@@ -58,7 +75,11 @@ export function ViewAsSwitch() {
 
 // ---------- Email delivery mode (System Admin setting) ----------
 const EmailModeContext = createContext<EmailMode>("dev");
-export const EmailModeProvider = ({ value, children }: { value: EmailMode; children: ReactNode }) => <EmailModeContext.Provider value={value}>{children}</EmailModeContext.Provider>;
+interface EmailModeProviderProps {
+  value: EmailMode;
+  children: ReactNode;
+}
+export const EmailModeProvider = ({ value, children }: EmailModeProviderProps) => <EmailModeContext.Provider value={value}>{children}</EmailModeContext.Provider>;
 export const useEmailMode = () => useContext(EmailModeContext);
 
 export function useSetEmailMode() {
@@ -78,7 +99,11 @@ export function useSendEmail() {
 // ---------- Groups the current user created (they are the Owner of each) ----------
 // The layout (and so the sidebar) is not re-rendered on navigation, so the latest list is also kept here in state.
 const CreatedGroupsContext = createContext<{ list: CreatedGroup[]; set: (l: CreatedGroup[]) => void }>({ list: [], set: () => {} });
-export function CreatedGroupsProvider({ value, children }: { value: CreatedGroup[]; children: ReactNode }) {
+interface CreatedGroupsProviderProps {
+  value: CreatedGroup[];
+  children: ReactNode;
+}
+export function CreatedGroupsProvider({ value, children }: CreatedGroupsProviderProps) {
   const [local, setLocal] = useState<CreatedGroup[] | null>(null); // null until this session changes the list
   return <CreatedGroupsContext.Provider value={{ list: local ?? value, set: setLocal }}>{children}</CreatedGroupsContext.Provider>;
 }
@@ -96,7 +121,11 @@ export function useSaveCreatedGroups() {
 
 // ---------- Goals created in the preview (same pattern as created groups) ----------
 const CreatedGoalsContext = createContext<{ list: CreatedGoal[]; set: (l: CreatedGoal[]) => void }>({ list: [], set: () => {} });
-export function CreatedGoalsProvider({ value, children }: { value: CreatedGoal[]; children: ReactNode }) {
+interface CreatedGoalsProviderProps {
+  value: CreatedGoal[];
+  children: ReactNode;
+}
+export function CreatedGoalsProvider({ value, children }: CreatedGoalsProviderProps) {
   const [local, setLocal] = useState<CreatedGoal[] | null>(null);
   return <CreatedGoalsContext.Provider value={{ list: local ?? value, set: setLocal }}>{children}</CreatedGoalsContext.Provider>;
 }

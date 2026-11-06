@@ -1,22 +1,34 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { CalendarDays, Eye, Flag, Plus, Users } from "lucide-react";
+import { CalendarDays, Eye, Flag, Users } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
+import { JoinGoalButton } from "@/components/app/join-group";
+import { SAMPLE_ROSTER, sampleGroupsFor } from "@/lib/accounts";
+import type { Account } from "@/lib/accounts";
+import type { GoalJoins } from "@/lib/memberships";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageHeader, StatusBadge } from "@/components/app/primitives";
 import { goalIcon, typeName } from "./screens";
 import { groups } from "@/lib/demo-data";
 import { fmtDate } from "@/lib/money";
 import { goalPath } from "@/lib/screens";
+import { BASE_PATH } from "@/lib/constants";
 
+interface GoalInfoScreenProps {
+  id?: string;
+  account: Account;
+  joins: GoalJoins;
+}
 // ---------- Goal info: what a group member sees about a goal they have not joined ----------
 // Only the purpose, who joined and when it started. Progress, amounts and records stay hidden until you join.
-export function GoalInfoScreen({ id }: { id?: string }) {
+// joins: goal join requests (lib/memberships.ts): the member asks here, an Owner approves on the group page.
+export function GoalInfoScreen({ id, account, joins }: GoalInfoScreenProps) {
   const group = groups.find((g) => g.goals.some((x) => x.id === id));
-  const goal = group?.goals.find((x) => x.id === id);
-  if (!group || !goal) notFound();
+  const raw = group?.goals.find((x) => x.id === id);
+  if (!group || !raw) notFound();
+  const goal = sampleGroupsFor(account, joins).flatMap((g) => g.goals).find((x) => x.id === id) ?? raw;
   if (goal.joined || !goal.info) return <Alert><AlertTitle>You already joined {goal.name}</AlertTitle><AlertDescription><Link href={goalPath(goal, "member")} className="underline">Open the goal</Link></AlertDescription></Alert>;
   const { about, target, started, joinedBy } = goal.info;
   const Icon = goalIcon[goal.type];
@@ -25,7 +37,7 @@ export function GoalInfoScreen({ id }: { id?: string }) {
       <PageHeader
         title={goal.name}
         description={`${typeName[goal.type]} goal in ${group.name}`}
-        actions={<><Link href="/design-preview/goals" className={buttonVariants({ variant: "outline" })}>Back to All Goals</Link><Button><Plus aria-hidden /> Join this goal</Button></>}
+        actions={<><Link href={`${BASE_PATH}/goals`} className={buttonVariants({ variant: "outline" })}>Back to All Goals</Link><JoinGoalButton goal={{ id: goal.id, name: goal.name }} group={group.id} owner={SAMPLE_ROSTER[group.id]?.owner ?? "the Owner"} joins={joins} /></>}
       />
       <Alert>
         <Eye aria-hidden />

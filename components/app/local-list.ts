@@ -11,13 +11,16 @@ export function listStore<T>(key: string, parse: (v: unknown[]) => T[], limit: n
     return () => { window.removeEventListener(event, cb); window.removeEventListener("storage", cb); };
   };
   const raw = () => { try { return localStorage.getItem(key) ?? ""; } catch { return ""; } };
+  const read = (text: string): T[] => {
+    try { const v: unknown = text ? JSON.parse(text) : []; return Array.isArray(v) ? parse(v).slice(0, limit) : []; } catch { return []; }
+  };
   return {
     useList(): T[] {
       const text = useSyncExternalStore(subscribe, raw, () => "");
-      return useMemo(() => {
-        try { const v: unknown = text ? JSON.parse(text) : []; return Array.isArray(v) ? parse(v).slice(0, limit) : []; } catch { return []; }
-      }, [text]);
+      return useMemo(() => read(text), [text]);
     },
+    /** What is saved right now, for code that runs outside rendering. */
+    current: () => read(raw()),
     /** False when the browser's storage is full or blocked. */
     save(all: T[]) {
       try { localStorage.setItem(key, JSON.stringify(all.slice(0, limit))); } catch { return false; }

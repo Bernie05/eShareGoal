@@ -1,4 +1,5 @@
 import { WIDGETS, type IconKey, type Measure, type Template, type TemplateField, type WidgetId } from "./goal-templates";
+import { MAX_CREATED_GOALS, RETIRED_DEMO_GROUP } from "./constants";
 
 // Goals created in the preview. Each keeps a copy of its template (fields, measure, dashboard sections),
 // so it keeps working if the template is deleted. While the template exists, its dashboard sections win (see withTemplate).
@@ -11,8 +12,6 @@ export type CreatedGoal = {
   scope?: GoalScope; participants?: string[]; // participants: who takes part in an "each" goal (empty = everyone in the group)
 };
 export type GoalScope = "single" | "each";
-export const CREATED_GOALS_COOKIE = "esg-created-goals";
-export const MAX_CREATED_GOALS = 8;
 const ICONS: IconKey[] = ["wallet", "landmark", "dumbbell", "list", "target", "plane", "home", "book"];
 
 export function parseCreatedGoals(raw?: string): CreatedGoal[] {
@@ -21,7 +20,7 @@ export function parseCreatedGoals(raw?: string): CreatedGoal[] {
     if (!Array.isArray(list)) return [];
     return list.filter((g): g is CreatedGoal =>
       typeof g?.id === "string" && /^goal-[a-z0-9-]{1,60}$/.test(g.id) && typeof g.name === "string" && typeof g.groupId === "string"
-      && /^(family|friends|my-[a-z0-9-]{1,60})$/.test(g.groupId) && ["Active", "Paused"].includes(g.status) && typeof g.created === "string"
+      && /^(family|my-[a-z0-9-]{1,60})$/.test(g.groupId) && g.groupId !== RETIRED_DEMO_GROUP && ["Active", "Paused"].includes(g.status) && typeof g.created === "string"
       && typeof g.template === "object" && ICONS.includes(g.template?.icon) && ["money", "count", "checklist"].includes(g.template?.measure)
       && Array.isArray(g.template.fields) && Array.isArray(g.template.widgets) && typeof g.values === "object" && g.values !== null)
       .slice(0, MAX_CREATED_GOALS)

@@ -5,47 +5,53 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { useTheme } from "next-themes";
 import { Fragment, type ReactNode } from "react";
 import {
-  Activity, Bell, ChevronDown, ChevronRight, Crown, Flag, LayoutTemplate, Mail, Dumbbell, Home, Car, Landmark, LayoutGrid, Menu, Moon, PiggyBank,
-  Plus, Search, Settings, ShieldCheck, Sun, Target, UserCog, Users, Workflow,
+  Activity, Bell, ChevronDown, ChevronRight, Crown, Flag, Inbox, LayoutTemplate, Mail, Dumbbell, Home, Car, Landmark, LayoutGrid, Menu, Moon, PiggyBank,
+  Plus, Search, ShieldCheck, Sun, Target, UserCog, Users,
 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Sheet, SheetContent, SheetDescription, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { groups, type GoalType } from "@/lib/demo-data";
 import { ACCOUNTS, createdGroupsFor, navRole, roleIn, sampleGroupsFor, type Account } from "@/lib/accounts";
-import { canOpen, goalPath, screens } from "@/lib/screens";
+import { canOpen, goalPath, screens, settingsGroups, settingsHref } from "@/lib/screens";
 import { openReports } from "@/lib/reports-data";
 import type { CreatedGroup, EmailMode } from "@/lib/view-as";
 import type { CreatedGoal } from "@/lib/created-goals";
 import { ApprovalsBell } from "./approvals";
+import { PendingImportsBadge } from "./import-review";
 import { RemindersBell } from "./reminders";
 import { CreateGroupDialog } from "./create-group";
-import { DemoSeeder } from "./demo-seeder";
 import { templateIcon } from "./dashboard-preview";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AccountProvider, CreatedGoalsProvider, CreatedGroupsProvider, EmailModeProvider, useAccount, useCreatedGoals, OwnerOnly, useCreatedGroups, useViewAs, ViewAsProvider, ViewAsSwitch } from "./view-as";
 import { cn } from "@/lib/utils";
+import { signOutAction } from "@/app/actions/auth";
+import { BASE_PATH } from "@/lib/constants";
 
-const base = "/design-preview";
+type Identity = { name: string; email: string; initials: string };
 const goalIcon: Record<GoalType, typeof Landmark> = { loan: Car, shared_money: PiggyBank, fitness: Dumbbell, tasks: Target, custom: Target };
 
 const nav = [
-  { label: "Dashboard", icon: Home, href: `${base}/dashboard` },
-  { label: "My Groups", icon: Users, href: `${base}/groups` },
-  { label: "All Goals", icon: LayoutGrid, href: `${base}/goals` },
-  { label: "Activity History", icon: Activity, href: `${base}/activity` },
-  { label: "Workflows", icon: Workflow, href: `${base}/workflows` }, // Owners: their Gmail import workflows (and the common ones)
-  { label: "Users", icon: UserCog, href: `${base}/users` },
-  { label: "Reports", icon: Flag, href: `${base}/reports`, badge: String(openReports) },
-  { label: "Goal Templates", icon: LayoutTemplate, href: `${base}/templates` },
-  { label: "Email Templates", icon: Mail, href: `${base}/email-templates` },
-  { label: "Workflows", icon: Workflow, href: `${base}/import-workflows` }, // System Admin: common and Owners' workflows
-  { label: "Settings", icon: Settings, href: `${base}/settings` },
+  { label: "Dashboard", icon: Home, href: `${BASE_PATH}/dashboard` },
+  { label: "My Groups", icon: Users, href: `${BASE_PATH}/groups` },
+  { label: "All Goals", icon: LayoutGrid, href: `${BASE_PATH}/goals` },
+  { label: "Import review", icon: Inbox, href: `${BASE_PATH}/import` },
+  { label: "Activity History", icon: Activity, href: `${BASE_PATH}/activity` },
+  { label: "Users", icon: UserCog, href: `${BASE_PATH}/users` },
+  { label: "Reports", icon: Flag, href: `${BASE_PATH}/reports`, badge: String(openReports) },
+  { label: "Goal Templates", icon: LayoutTemplate, href: `${BASE_PATH}/templates` },
+  { label: "Email Templates", icon: Mail, href: `${BASE_PATH}/email-templates` },
 ];
 
-function NavLink({ href, active, className, children }: { href: string; active?: boolean; className?: string; children: ReactNode }) {
+interface NavLinkProps {
+  href: string;
+  active?: boolean;
+  className?: string;
+  children: ReactNode;
+}
+function NavLink({ href, active, className, children }: NavLinkProps) {
   return (
     <Link
       href={href}
@@ -57,9 +63,13 @@ function NavLink({ href, active, className, children }: { href: string; active?:
   );
 }
 
-function GoalNavItem({ goal, isActive }: { goal: CreatedGoal; isActive: (href: string) => boolean }) {
+interface GoalNavItemProps {
+  goal: CreatedGoal;
+  isActive: (href: string) => boolean;
+}
+function GoalNavItem({ goal, isActive }: GoalNavItemProps) {
   const Icon = templateIcon[goal.template.icon];
-  const href = `${base}/my-goal?goal=${goal.id}`;
+  const href = `${BASE_PATH}/my-goal?goal=${goal.id}`;
   return <li><NavLink href={href} active={isActive(href)} className="py-1.5"><Icon className="size-3.5 text-muted-foreground" aria-hidden /><span className="truncate">{goal.name}</span></NavLink></li>;
 }
 
@@ -77,7 +87,7 @@ function SidebarBody() {
   };
   return (
     <div className="flex h-full flex-col gap-4 p-3">
-      <Link href={base} className="flex items-center gap-2 px-2 py-1.5">
+      <Link href={BASE_PATH} className="flex items-center gap-2 px-2 py-1.5">
         <span className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground"><Target className="size-4" aria-hidden /></span>
         <span className="text-base font-semibold tracking-tight">eShareGoal</span>
       </Link>
@@ -87,6 +97,7 @@ function SidebarBody() {
             <li key={n.href}>
               <NavLink href={n.href} active={isActive(n.href)}>
                 <n.icon className="size-4" aria-hidden /><span className="flex-1">{n.label}</span>
+                {n.href.endsWith("/import") && <PendingImportsBadge />}
                 {n.badge && <span className="rounded-full bg-primary px-1.5 text-xs text-primary-foreground">{n.badge}</span>}
               </NavLink>
             </li>
@@ -103,7 +114,7 @@ function SidebarBody() {
                     <CollapsibleTrigger aria-label={`Toggle ${g.name} goals`} className="flex size-7 items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-sidebar-ring [&[data-panel-open]>svg]:rotate-90">
                       <ChevronRight className="size-4 transition-transform" aria-hidden />
                     </CollapsibleTrigger>
-                    <NavLink href={`${base}/group?group=${g.id}`} className="flex-1 py-1.5" active={isActive(`${base}/group?group=${g.id}`)}>{roleIn(account, g.id, created) === "owner" && <Crown className="size-3.5 shrink-0 text-primary" aria-label="You own this group" />}<span className="truncate">{g.name}</span></NavLink>
+                    <NavLink href={`${BASE_PATH}/group?group=${g.id}`} className="flex-1 py-1.5" active={isActive(`${BASE_PATH}/group?group=${g.id}`)}>{roleIn(account, g.id, created) === "owner" && <Crown className="size-3.5 shrink-0 text-primary" aria-label="You own this group" />}<span className="truncate">{g.name}</span></NavLink>
                   </div>
                   <CollapsibleContent>
                     <ul className="ml-3.5 space-y-0.5 border-l border-sidebar-border pl-2">
@@ -129,7 +140,7 @@ function SidebarBody() {
         </div>
       </nav>
       <div className="grid gap-2">
-        <OwnerOnly><Link href={`${base}/new-goal`} className={buttonVariants({ size: "default" })}><Plus aria-hidden /> New goal</Link></OwnerOnly>
+        <OwnerOnly><Link href={`${BASE_PATH}/new-goal`} className={buttonVariants({ size: "default" })}><Plus aria-hidden /> New goal</Link></OwnerOnly>
         {viewAs !== "admin" && <CreateGroupDialog trigger={<Button variant="outline"><Users aria-hidden /> New group</Button>} />}
       </div>
     </div>
@@ -165,18 +176,18 @@ function Breadcrumb() {
   const crumbs = viewAs === "admin" ? found.map((c) => (c === "My Groups" ? "All groups" : c)) : found;
   // Where each crumb leads: list pages, then groups, then goals (the same page the sidebar opens for this account).
   const hrefFor = (label: string): string | undefined => {
-    if (label === "My Groups") return `${base}/groups`;
-    if (label === "All groups") return `${base}/dashboard`;
-    const n = nav.find((x) => x.label === label && canOpen(x.href.split("/").pop()!, viewAs)); // two "Workflows" links: one per role
+    if (label === "My Groups") return `${BASE_PATH}/groups`;
+    if (label === "All groups") return `${BASE_PATH}/dashboard`;
+    const n = nav.find((x) => x.label === label && canOpen(x.href.split("/").pop()!, viewAs));
     if (n) return n.href;
     const g = [...groups, ...created].find((x) => x.name === label);
-    if (g) return `${base}/group?group=${g.id}`;
+    if (g) return `${BASE_PATH}/group?group=${g.id}`;
     for (const gr of sampleGroupsFor(account)) {
       const goal = gr.goals.find((x) => x.name === label);
       if (goal) return goalPath(goal, roleIn(account, gr.id, created) ?? "member");
     }
     const s = screens.find((x) => x.crumbs.at(-1) === label);
-    return s && canOpen(s.slug, viewAs) ? `${base}/${s.slug}` : undefined;
+    return s && canOpen(s.slug, viewAs) ? `${BASE_PATH}/${s.slug}` : undefined;
   };
   return (
     <nav aria-label="Breadcrumb" className="min-w-0">
@@ -198,20 +209,35 @@ function Breadcrumb() {
   );
 }
 
-export function AppShell({ account, emailMode, createdGroups, createdGoals, children }: { account: Account; emailMode: EmailMode; createdGroups: CreatedGroup[]; createdGoals: CreatedGoal[]; children: ReactNode }) {
+interface AppShellProps {
+  /** The development toggle is on: no sign-in, and the View as switch shows. */
+  dev: boolean;
+  identity: Identity | null;
+  account: Account;
+  emailMode: EmailMode;
+  createdGroups: CreatedGroup[];
+  createdGoals: CreatedGoal[];
+  children: ReactNode;
+}
+export function AppShell({ dev, identity, account, emailMode, createdGroups, createdGoals, children }: AppShellProps) {
   return (
     <AccountProvider value={account}><EmailModeProvider value={emailMode}><CreatedGroupsProvider value={createdGroups}><CreatedGoalsProvider value={createdGoals}>
-      <ShellFrame>{children}</ShellFrame>
+      <ShellFrame dev={dev} identity={identity}>{children}</ShellFrame>
     </CreatedGoalsProvider></CreatedGroupsProvider></EmailModeProvider></AccountProvider>
   );
 }
 
+interface ShellFrameProps {
+  dev: boolean;
+  identity: Identity | null;
+  children: ReactNode;
+}
 // The site-wide role for navigation (admin; owner when the account owns a group; else member), from the live group list,
 // so creating a group shows the Owner pages right away. Pages set the role per group.
-function ShellFrame({ children }: { children: ReactNode }) {
+function ShellFrame({ dev, identity, children }: ShellFrameProps) {
   const account = useAccount();
   const viewAs = navRole(account, useCreatedGroups());
-  const me = ACCOUNTS[account];
+  const me = identity ?? ACCOUNTS[account];
   return (
     <ViewAsProvider value={viewAs}>
     <div className="flex min-h-screen">
@@ -228,14 +254,14 @@ function ShellFrame({ children }: { children: ReactNode }) {
           </Sheet>
           <Breadcrumb />
           <div className="ml-auto flex items-center gap-1">
-            <ViewAsSwitch />
+            {dev && <ViewAsSwitch />}
             <Button variant="outline" className="hidden w-56 justify-start text-muted-foreground md:inline-flex" aria-label="Search or jump to">
               <Search aria-hidden /> Search or jump to… <kbd className="ml-auto rounded border px-1 text-xs">Ctrl K</kbd>
             </Button>
             <Button variant="ghost" size="icon" className="md:hidden" aria-label="Search"><Search aria-hidden /></Button>
             {viewAs !== "admin" && <RemindersBell />}
             {viewAs === "owner" && <ApprovalsBell />}
-            {viewAs === "admin" && <Link href={`${base}/reports`} className={cn(buttonVariants({ variant: "ghost", size: "icon" }), "relative")} aria-label={`Reports, ${openReports} open`}>
+            {viewAs === "admin" && <Link href={`${BASE_PATH}/reports`} className={cn(buttonVariants({ variant: "ghost", size: "icon" }), "relative")} aria-label={`Reports, ${openReports} open`}>
               <Bell aria-hidden /><span className="absolute top-1.5 right-1.5 size-2 rounded-full bg-destructive ring-2 ring-background" aria-hidden />
             </Link>}
             <ThemeToggle />
@@ -244,18 +270,21 @@ function ShellFrame({ children }: { children: ReactNode }) {
                 <Avatar size="sm"><AvatarFallback>{me.initials}</AvatarFallback></Avatar><ChevronDown className="size-3.5 text-muted-foreground" aria-hidden />
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-52">
-                <DropdownMenuLabel>{me.name} (demo)<br /><span className="font-normal text-muted-foreground">{me.email}</span></DropdownMenuLabel>
+                <DropdownMenuGroup><DropdownMenuLabel>{me.name}{dev && " (demo)"}<br /><span className="font-normal text-muted-foreground">{me.email}</span></DropdownMenuLabel></DropdownMenuGroup>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem>Profile</DropdownMenuItem>
-                <DropdownMenuItem>Account settings</DropdownMenuItem>
-                <DropdownMenuItem>Sign out</DropdownMenuItem>
+                {settingsGroups(viewAs).map((g) => (
+                  <DropdownMenuGroup key={g.label}>
+                    <DropdownMenuLabel>{g.label}</DropdownMenuLabel>
+                    {g.items.map((s) => <DropdownMenuItem key={s.tab} render={<Link href={settingsHref(s.tab)} />}>{s.label}</DropdownMenuItem>)}
+                  </DropdownMenuGroup>
+                ))}
+                {!dev && <><DropdownMenuSeparator /><DropdownMenuItem onClick={() => { void signOutAction(); }}>Sign out</DropdownMenuItem></>}
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
         </header>
-        <DemoSeeder />
         <main id="main" className="mx-auto w-full max-w-6xl flex-1 space-y-6 p-4 sm:p-6">
-          {viewAs === "admin" && <Alert><ShieldCheck aria-hidden /><AlertTitle>You are viewing as System Admin</AlertTitle><AlertDescription>You are in every group as a viewer. You cannot change anything, and you are not counted in members, totals or charts.</AlertDescription></Alert>}
+          {viewAs === "admin" && <Alert><ShieldCheck aria-hidden /><AlertTitle>You are viewing as System Admin</AlertTitle><AlertDescription>You are in every group as a viewer. You can change scheduled jobs only, and you are not counted in members, totals or charts.</AlertDescription></Alert>}
           {children}
         </main>
       </div>

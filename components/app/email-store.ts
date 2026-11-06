@@ -2,11 +2,12 @@
 
 import { useMemo, useSyncExternalStore } from "react";
 import { BUILT_IN_EMAILS, isEmailTemplate, type EmailTemplate } from "@/lib/email-templates";
+import { STORAGE, STORAGE_EVENTS } from "@/lib/constants";
 
 // The System Admin's own email templates, in this browser's localStorage (images are too big for a cookie).
 // Owners pick from the same list in Group setup → Jobs, so in the preview both see one shared list.
-const KEY = "esg-email-templates";
-const EVENT = "esg-email-templates-change";
+const KEY = STORAGE.emailTemplates;
+const EVENT = STORAGE_EVENTS.emailTemplates;
 const subscribe = (cb: () => void) => {
   window.addEventListener(EVENT, cb); window.addEventListener("storage", cb);
   return () => { window.removeEventListener(EVENT, cb); window.removeEventListener("storage", cb); };

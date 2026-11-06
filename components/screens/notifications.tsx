@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { BellRing, CalendarClock, CheckCheck, Inbox, Settings, TriangleAlert, UserPlus } from "lucide-react";
+import { CalendarClock, CheckCheck, Inbox, Settings, UserPlus } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -10,20 +10,30 @@ import { Switch } from "@/components/ui/switch";
 import { PageHeader } from "@/components/app/primitives";
 import { lockedFor, NOTIFY, notifyFor, type NotifyKey, type SetupSettings, type Target } from "@/lib/group-settings";
 import { cn } from "@/lib/utils";
+import { BASE_PATH, CAR_CREDIT, CAR_CREDIT_ENTRY } from "@/lib/constants";
+import { IMPORT_REVIEW_HREF, useReviewQueue } from "@/components/app/import-review";
 
-const base = "/design-preview";
 // FICTIONAL notifications for group Owners: things that need an Owner to act, newest first.
 // entry: the goal it comes from ("family~car-credit"); none for group-wide news such as invitations.
 const initial = [
-  { id: "n1", groupId: "family", entry: "family~car-credit", kind: "imports" as NotifyKey, Icon: Inbox, title: "2 imported transactions need review", body: "Family / Car Credit · one matches two members.", when: "Today, 8:01 AM", href: `${base}/import`, unread: true },
-  { id: "n2", groupId: "family", entry: "family~car-credit", kind: "due" as NotifyKey, Icon: CalendarClock, title: "Installment 12/60 is due in 10 days", body: "Family / Car Credit · ₱24,000.00 due Nov 5, 2026.", when: "Today, 9:00 AM", href: `${base}/loan`, unread: true },
-  { id: "n3", groupId: "family", entry: "family~car-credit", kind: "members" as NotifyKey, Icon: TriangleAlert, title: "Monthly summary email failed", body: "Family · the Oct 1 run did not send. It retries on Nov 1.", when: "Yesterday", href: `${base}/group?group=family&setup=car-credit&tab=jobs#setup`, unread: true },
-  { id: "n4", groupId: "family", entry: "", kind: "members" as NotifyKey, Icon: UserPlus, title: "Rina Cruz has not accepted the invitation", body: "Family · invited Oct 21.", when: "Oct 24", href: `${base}/group?group=family`, unread: false },
-  { id: "n5", groupId: "family", entry: "family~grocery-budget", kind: "milestones" as NotifyKey, Icon: BellRing, title: "Grocery Budget reached 75%", body: "Family · ₱9,000 of ₱12,000 this month.", when: "Oct 22", href: `${base}/shared-money?goal=grocery-budget`, unread: false },
+  { id: "n2", groupId: "family", entry: CAR_CREDIT_ENTRY, kind: "due" as NotifyKey, Icon: CalendarClock, title: "Installment 12/60 is due in 10 days", body: "Family / Car Credit · ₱24,000.00 due Nov 5, 2026.", when: "Today, 9:00 AM", href: `${BASE_PATH}/loan`, unread: true },
+  { id: "n4", groupId: "family", entry: "", kind: "members" as NotifyKey, Icon: UserPlus, title: "Rina Cruz has not accepted the invitation", body: "Family · invited Oct 21.", when: "Oct 24", href: `${BASE_PATH}/group?group=family`, unread: false },
 ];
 type Item = (typeof initial)[number];
 
-function ItemList({ items, onRead }: { items: Item[]; onRead: (id: string) => void }) {
+/** Payments waiting in the goal's Import review. Real, and it stays unread until an Owner decides on them. */
+function useImportNotice(): Item[] {
+  const { pending } = useReviewQueue();
+  const n = pending.filter((r) => r.goalId === CAR_CREDIT).length;
+  if (!n) return [];
+  return [{ id: "imports-waiting", groupId: "family", entry: CAR_CREDIT_ENTRY, kind: "imports", Icon: Inbox, title: `${n} ${n === 1 ? "payment needs" : "payments need"} your approval`, body: "Family / Car Credit · found in Gmail. Confirm them before they count.", when: "Now", href: IMPORT_REVIEW_HREF, unread: true }];
+}
+
+interface ItemListProps {
+  items: Item[];
+  onRead: (id: string) => void;
+}
+function ItemList({ items, onRead }: ItemListProps) {
   if (!items.length) return <p className="py-4 text-center text-sm text-muted-foreground">Nothing here yet.</p>;
   return (
     <ul className="divide-y">
@@ -43,10 +53,14 @@ function ItemList({ items, onRead }: { items: Item[]; onRead: (id: string) => vo
 /** How many unread notifications the groups have (for the bell). */
 export const unreadIn = (groupIds: string[]) => initial.filter((n) => n.unread && groupIds.includes(n.groupId)).length;
 
+interface NotificationsScreenProps {
+  groups: { id: string; name: string }[];
+}
 // ---------- Notifications inbox (the bell): every group this user owns, each linking to its settings ----------
-export function NotificationsScreen({ groups }: { groups: { id: string; name: string }[] }) {
+export function NotificationsScreen({ groups }: NotificationsScreenProps) {
   const [items, setItems] = useState(() => initial.filter((n) => groups.some((g) => g.id === n.groupId)));
-  const unread = items.filter((n) => n.unread).length;
+  const notice = useImportNotice().filter((n) => groups.some((g) => g.id === n.groupId));
+  const unread = items.filter((n) => n.unread).length + notice.length;
   const read = (id: string) => setItems((xs) => xs.map((n) => (n.id === id ? { ...n, unread: false } : n)));
   return (
     <>
@@ -59,20 +73,28 @@ export function NotificationsScreen({ groups }: { groups: { id: string; name: st
         <Card key={g.id}><CardContent className="space-y-2">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="font-medium">{g.name}</p>
-            <Link href={`${base}/group?group=${g.id}#setup`} className={buttonVariants({ variant: "ghost", size: "sm" })}><Settings aria-hidden /> Notification settings</Link>
+            <Link href={`${BASE_PATH}/group?group=${g.id}#setup`} className={buttonVariants({ variant: "ghost", size: "sm" })}><Settings aria-hidden /> Notification settings</Link>
           </div>
-          <ItemList items={items.filter((n) => n.groupId === g.id)} onRead={read} />
+          <ItemList items={[...notice, ...items].filter((n) => n.groupId === g.id)} onRead={read} />
         </CardContent></Card>
       ))}
     </>
   );
 }
 
+interface GroupNotificationsProps {
+  entryKey: string;
+  target: Target;
+  settings: SetupSettings;
+  editable: boolean;
+  onChange: (s: SetupSettings) => void;
+}
 // ---------- Notifications tab of one goal: what it notifies Owners about, and its latest ones ----------
-export function GroupNotifications({ entryKey, target, settings, editable, onChange }: { entryKey: string; target: Target; settings: SetupSettings; editable: boolean; onChange: (s: SetupSettings) => void }) {
+export function GroupNotifications({ entryKey, target, settings, editable, onChange }: GroupNotificationsProps) {
   const [items, setItems] = useState(() => initial.filter((n) => n.entry === entryKey));
+  const notice = useImportNotice().filter((n) => n.entry === entryKey);
   const options = notifyFor(settings, target);
-  const shown = items.filter((n) => options.find((o) => o.key === n.kind)?.on ?? true);
+  const shown = [...notice, ...items].filter((n) => options.find((o) => o.key === n.kind)?.on ?? true);
   const locked = lockedFor(NOTIFY, settings, target);
   return (
     <div className="space-y-3">

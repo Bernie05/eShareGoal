@@ -1,36 +1,40 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# eShareGoal
 
-## Getting Started
+Shared goals, group funds and loan tracking for families, friends and teams. Next.js 16, Postgres (Neon) with Drizzle,
+Auth.js.
 
-First, run the development server:
+## Getting started
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+cp .env.example .env.local   # set DATABASE_URL="pglite:./.data/dev", AUTH_SECRET, AUTH_DEV_BYPASS=true
+npm run dev                  # http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+The local database is created, migrated and seeded on first start. With the development bypass there is no sign-in:
+switch people with **View as** in the sidebar. Neon, Google sign-in, email and deploying: see [docs/configuration.md](docs/configuration.md).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Sign-in toggle
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+`AUTH_DEV_BYPASS` in `.env.local` decides whether you sign in:
 
-## Learn More
+| Value | What happens |
+|---|---|
+| `true` | No sign-in. Switch people with **View as** in the header. |
+| `false` | Sign-in works as in production. Use this to test sign-up, approval and sign-out. |
 
-To learn more about Next.js, take a look at the following resources:
+Restart `npm run dev` after changing it. Production always signs in, whatever the value says. New accounts wait for a
+System Admin under **Users**, so list your own email in `ADMIN_EMAILS` and sign in with Google or an email link: that proves
+the inbox is yours, and the account becomes an active System Admin. A password sign-up proves nothing, so it never does.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Where things are
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+| Path | What |
+|---|---|
+| `app/(app)/` | Signed-in pages: dashboard, groups, goals, admin users |
+| `app/actions/` | Server Actions the pages call |
+| `lib/server/` | Server rules: who may read or change what (`dal.ts`), groups, goals, admin |
+| `lib/db/` | Database schema, connection and development seed |
+| `drizzle/` | SQL migrations |
+| `scripts/` | Seed and backend tests (`npm run test:backend`) |
+| `archive/design-preview/` | The earlier clickable design preview, kept for reuse on this machine only (git-ignored, not built) |

@@ -13,9 +13,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { PageHeader, StatCard, StatusBadge, toneText } from "@/components/app/primitives";
 import { useSendEmail, writeCookie } from "@/components/app/view-as";
-import { GOAL_REQUESTS_COOKIE, type GoalRequest } from "@/lib/goal-requests";
+import { type GoalRequest } from "@/lib/goal-requests";
 import { reports as initial, type Report, type ReportStatus } from "@/lib/reports-data";
 import { cn } from "@/lib/utils";
+import { BASE_PATH, GOAL_REQUESTS_COOKIE } from "@/lib/constants";
 
 const PAGE = 10;
 const empty = { q: "", type: "", status: "", priority: "" };
@@ -29,8 +30,11 @@ const fromRequest = (r: GoalRequest): Report => ({
   timeline: [`${r.created} · Requested by ${r.by}`, ...(r.note ? [`${r.status === "Built" ? "Built" : "Rejected"} by System Admin: ${r.note}`] : [])],
 });
 
+interface ReportsScreenProps {
+  requests: GoalRequest[];
+}
 // ---------- Reports: System Admin only. Everything reported by users or found by the system, in one inbox ----------
-export function ReportsScreen({ requests }: { requests: GoalRequest[] }) {
+export function ReportsScreen({ requests }: ReportsScreenProps) {
   const [rows, setRows] = useState(() => [...requests.map(fromRequest), ...initial]);
   const [f, setF] = useState(empty);
   const [page, setPage] = useState(0);
@@ -122,8 +126,8 @@ export function ReportsScreen({ requests }: { requests: GoalRequest[] }) {
               <p className="rounded-lg bg-muted/40 p-3">{open.body}</p>
               {(open.about.user || open.about.ref) && (
                 <div className="flex flex-wrap gap-2">
-                  {open.about.user && <Link href="/design-preview/users" className={buttonVariants({ variant: "outline", size: "sm" })}>Open in Users</Link>}
-                  {open.about.ref && <Link href="/design-preview/activity" className={buttonVariants({ variant: "outline", size: "sm" })}>Find {open.about.ref} in Activity History</Link>}
+                  {open.about.user && <Link href={`${BASE_PATH}/users`} className={buttonVariants({ variant: "outline", size: "sm" })}>Open in Users</Link>}
+                  {open.about.ref && <Link href={`${BASE_PATH}/activity`} className={buttonVariants({ variant: "outline", size: "sm" })}>Find {open.about.ref} in Activity History</Link>}
                 </div>
               )}
               <section className="space-y-2">
@@ -136,7 +140,7 @@ export function ReportsScreen({ requests }: { requests: GoalRequest[] }) {
                 <div className="flex flex-wrap gap-2">
                   {open.status === "Open" && <Button variant="outline" onClick={() => move(open, "In review", "Review started")}><Play aria-hidden /> Start review</Button>}
                   {(open.status === "Open" || open.status === "In review") && (open.type === "Goal request" ? <>
-                    <Link href={`/design-preview/templates?request=${open.id}`} className={buttonVariants()}><Hammer aria-hidden /> Build a template</Link>
+                    <Link href={`${BASE_PATH}/templates?request=${open.id}`} className={buttonVariants()}><Hammer aria-hidden /> Build a template</Link>
                     <Button variant="ghost" disabled={!note.trim()} onClick={() => move(open, "Dismissed", "Rejected")}><X aria-hidden /> Reject</Button>
                   </> : <>
                     <Button disabled={!note.trim()} onClick={() => move(open, "Resolved", "Resolved")}><CheckCheck aria-hidden /> Resolve</Button>

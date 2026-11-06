@@ -1,0 +1,3 @@
+ALTER TABLE "record" ADD COLUMN "message_id" text;--> statement-breakpoint
+CREATE UNIQUE INDEX "record_goal_ref_unique" ON "record" USING btree ("goal_id","ref") WHERE "record"."ref" is not null and "record"."deleted_at" is null;--> statement-breakpoint
+CREATE UNIQUE INDEX "record_goal_message_unique" ON "record" USING btree ("goal_id","message_id") WHERE "record"."message_id" is not null and "record"."deleted_at" is null;

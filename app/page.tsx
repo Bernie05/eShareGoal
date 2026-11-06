@@ -1,6 +1,6 @@
+import { AFTER_SIGN_IN } from "@/lib/constants";
 import { redirect } from "next/navigation";
 
-// Design phase only: the real dashboard arrives with the build.
 export default function Home() {
-  redirect("/design-preview");
+  redirect(AFTER_SIGN_IN);
 }

@@ -2,6 +2,7 @@
 
 import { useSyncExternalStore } from "react";
 import type { Schedule } from "@/lib/group-settings";
+import { STORAGE, STORAGE_EVENTS } from "@/lib/constants";
 
 // Scheduled jobs an Owner creates for one goal: an email from one of the System Admin's templates, sent on a schedule.
 // subject/body: this job's own wording, set only when the Owner changed the template's; the template itself stays as
@@ -12,8 +13,8 @@ export type CustomJob = {
   to: "all" | "unpaid";
 };
 
-const KEY = (entryKey: string) => `esg-custom-jobs:${entryKey}`;
-const EVENT = "esg-custom-jobs-change";
+const KEY = STORAGE.customJobs;
+const EVENT = STORAGE_EVENTS.customJobs;
 const EMPTY: CustomJob[] = [];
 const cache = new Map<string, { raw: string | null; list: CustomJob[] }>();
 

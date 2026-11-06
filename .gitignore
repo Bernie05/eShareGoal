@@ -73,3 +73,9 @@ pnpm-debug.log*
 test-results/
 playwright-report/
 playwright/.cache/
+
+# Local development database (PGlite)
+.data/
+
+# Archived design preview: kept on this machine only, not built, not committed
+archive/

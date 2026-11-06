@@ -5,7 +5,7 @@ import { StatCard, StatusBadge, toneText } from "@/components/app/primitives";
 import { TX_KIND } from "@/components/app/approvals";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { MyGoalChart } from "@/components/screens/charts";
-import { comingMonth, GroupStatusCard, label, useDues } from "./dues";
+import { comingMonth, DuesCard, label, useDues } from "./dues";
 import { useMe, useViewAs } from "./view-as";
 import { members } from "@/lib/demo-data";
 import { fmtDate, peso } from "@/lib/money";
@@ -33,12 +33,12 @@ export function MyCarCreditView() {
     <>
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard label="You contributed" value={peso(contributed)} icon={ArrowDownLeft} tone="success" hint={`${rows.filter((r) => r.type === "deposit").length} deposits`} />
-        <StatCard label={`Your ${label(comingMonth)} share`} value={due.status === "Paid" ? "Paid" : peso(left)} icon={CalendarClock} tone={due.status === "Paid" ? "success" : "warning"} hint={due.status === "Paid" ? peso(due.share) : `left of ${peso(due.share)}`} />
+        <StatCard label={`Your ${label(comingMonth)} share`} value={due.status === "Paid" ? "Paid" : peso(left)} icon={CalendarClock} tone={due.status === "Paid" ? "success" : "warning"} hint={due.status === "Paid" ? (due.fromAdvance ? `${peso(due.share)}, ${peso(due.fromAdvance)} from your advance` : peso(due.share)) : `left of ${peso(due.share)}${due.fromAdvance ? ` after ${peso(due.fromAdvance)} advance` : ""}`} />
         <StatCard label="Your advance" value={peso(due.advance)} icon={PiggyBank} tone={due.advance ? "success" : undefined} hint={due.fromAdvance ? `${peso(due.fromAdvance)} goes to ${label(comingMonth)}` : "Paid above your share"} />
         <StatCard label="You are behind" value={peso(due.behind)} icon={TriangleAlert} tone={due.behind ? "danger" : undefined} hint={due.behind ? due.missed.join(", ") : "Up to date"} />
       </div>
       <Card><CardHeader><CardTitle>Your monthly contributions</CardTitle></CardHeader><CardContent><MyGoalChart data={chart} unit="peso" label="Your contributions" /></CardContent></Card>
-      <GroupStatusCard />
+      <DuesCard />
       <Card>
         <CardHeader><CardTitle>Your transactions</CardTitle><CardDescription>{owner ? "Only yours. Everyone's are in the group dashboard below and in Transactions." : "Only yours. The group Owner sees everyone's."}</CardDescription></CardHeader>
         <CardContent>

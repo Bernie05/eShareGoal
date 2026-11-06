@@ -1,3 +1,4 @@
+import { MAX_GOAL_REQUESTS } from "./constants";
 // "Request a goal type": an Owner asks the System Admin for a kind of goal that no template covers.
 // Requests show up in Reports; the admin builds a template from one or rejects it. Kept in a cookie: no backend yet.
 export type GoalRequestStatus = "Open" | "Built" | "Rejected";
@@ -5,8 +6,6 @@ export type GoalRequest = {
   id: string; name: string; what: string; group: string; by: string; created: string;
   status: GoalRequestStatus; note?: string; templateId?: string;
 };
-export const GOAL_REQUESTS_COOKIE = "esg-goal-requests";
-export const MAX_GOAL_REQUESTS = 6;
 
 export function parseGoalRequests(raw?: string): GoalRequest[] {
   try {

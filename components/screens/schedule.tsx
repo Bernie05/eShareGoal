@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import type { Freq, Schedule } from "@/lib/group-settings";
+import { LOCALE } from "@/lib/constants";
 
 // A schedule is kept as a few plain choices and turned into a cron expression (minute hour day-of-month month day-of-week).
 const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -11,11 +12,16 @@ export const cron = ({ freq, time, weekday, day }: Schedule) => {
   const [h, m] = time.split(":").map(Number);
   return freq === "hourly" ? `${m} * * * *` : freq === "daily" ? `${m} ${h} * * *` : freq === "weekly" ? `${m} ${h} * * ${weekday}` : `${m} ${h} ${day} * *`;
 };
-const clock = (time: string) => new Date(`2026-01-01T${time}:00`).toLocaleTimeString("en-PH", { hour: "numeric", minute: "2-digit" });
+const clock = (time: string) => new Date(`2026-01-01T${time}:00`).toLocaleTimeString(LOCALE, { hour: "numeric", minute: "2-digit" });
 export const human = (s: Schedule) =>
   s.freq === "hourly" ? `Every hour at :${s.time.slice(3)}` : s.freq === "daily" ? `Daily at ${clock(s.time)}` : s.freq === "weekly" ? `${WEEKDAYS[s.weekday]}s at ${clock(s.time)}` : `Day ${s.day} of every month at ${clock(s.time)}`;
 
-export function ScheduleFields({ s, setS, id }: { s: Schedule; setS: (s: Schedule) => void; id: string }) {
+interface ScheduleFieldsProps {
+  s: Schedule;
+  setS: (s: Schedule) => void;
+  id: string;
+}
+export function ScheduleFields({ s, setS, id }: ScheduleFieldsProps) {
   return (
     <>
       <div className="grid gap-3 sm:grid-cols-2">
@@ -50,4 +56,4 @@ export function nextRuns(s: Schedule, from: Date, n = 3): Date[] {
   for (let i = 0; out.length < n && i < 400; i++) { if (ok(t)) out.push(new Date(t)); t.setDate(t.getDate() + 1); }
   return out;
 }
-export const when = (d: Date) => d.toLocaleString("en-PH", { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+export const when = (d: Date) => d.toLocaleString(LOCALE, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });

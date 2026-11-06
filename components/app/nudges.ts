@@ -1,6 +1,7 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
+import { STORAGE, STORAGE_EVENTS } from "@/lib/constants";
 
 // Reminders the Owner sends by hand ("Notify"), on top of the automatic ones. Kept in this browser's localStorage
 // (the preview has no backend), so switching accounts with View as shows them to the member they were sent to.
@@ -13,8 +14,8 @@ export type Nudge = {
   kind?: "update";   // the Owner changed the goal's details (month/amount: unused); otherwise a payment reminder
 };
 
-const KEY = "esg-nudges:family~car-credit";
-const EVENT = "esg-nudges-change";
+const KEY = STORAGE.nudges;
+const EVENT = STORAGE_EVENTS.nudges;
 const EMPTY: Nudge[] = [];
 let cache: { raw: string | null; list: Nudge[] } = { raw: null, list: EMPTY };
 

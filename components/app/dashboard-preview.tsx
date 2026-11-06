@@ -8,8 +8,12 @@ const widgetIcon: Record<WidgetId, LucideIcon> = {
   inout: ChartColumn, checkins: ChartColumn, leaderboard: Medal, milestones: Target, tasks: ListChecks, records: Table2,
 };
 
+interface DashboardPreviewProps {
+  widgets: WidgetId[];
+  className?: string;
+}
 /** Wireframe of a goal dashboard: one block per section, in the order chosen. Wide sections take the full row. */
-export function DashboardPreview({ widgets, className }: { widgets: WidgetId[]; className?: string }) {
+export function DashboardPreview({ widgets, className }: DashboardPreviewProps) {
   if (!widgets.length) return <p className={cn("rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground", className)}>No dashboard sections yet. Pick at least one.</p>;
   return (
     <ol className={cn("grid grid-cols-2 gap-2", className)} aria-label="Dashboard sections, in order">

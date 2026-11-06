@@ -11,10 +11,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { loan as sample, members, type LoanTerms } from "@/lib/demo-data";
 import { Switch } from "@/components/ui/switch";
 import { fmtDate, peso } from "@/lib/money";
-import { CAR_CREDIT, useCarCredit } from "./car-credit";
+import { useCarCredit } from "./car-credit";
 import { sendNudges } from "./nudges";
 import { writeLoanTerms } from "./records";
 import { useMe, useSendEmail } from "./view-as";
+import { CAR_CREDIT } from "@/lib/constants";
 
 /** The goal's description under the page title; it follows what the Owner saves in Goal settings. */
 export function LoanAbout() {
@@ -43,7 +44,10 @@ export function LoanDetailsCard() {
   return <DetailsForm key={JSON.stringify(loan)} loan={loan} />; // starts again from the saved terms after a save or reset
 }
 
-function DetailsForm({ loan }: { loan: LoanTerms }) {
+interface DetailsFormProps {
+  loan: LoanTerms;
+}
+function DetailsForm({ loan }: DetailsFormProps) {
   const [about, setAbout] = useState(loan.about);
   const [monthly, setMonthly] = useState(toPesos(loan.monthly));
   const [term, setTerm] = useState(String(loan.term));

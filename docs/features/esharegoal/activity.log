@@ -29,3 +29,8 @@
 2026-10-26 | orchestrator | group setup accordion: whole group + one row per goal (sub group)
 2026-10-27 | orchestrator | removed whole-group setup row; setup is per goal only
 2026-10-27 | orchestrator | gmail import per goal: test connection, help, filter, JSON, member map, add deposits; removed Change role
+2026-10-29T05:02:48Z | orchestrator | Backend phase 1 started: schema, migration, Auth.js, DAL, sign-in, seed
+2026-10-29T05:12:26Z | orchestrator | Backend phase 1: services (groups, invites, members, goals, join requests, records, admin), server actions, proxy; 53 rule tests pass on PGlite
+2026-10-29T05:32:44Z | orchestrator | Static preview removed (archived), screens rebuilt on the DB, local PGlite dev DB + seed + dev sign-in
+2026-11-06 20:45 | fullstack-dev | Security: O-1, O-2, O-3, O-4, O-17 fixed; sign-in audit fixed ADMIN_EMAILS activation on an unverified email, unproven passwords surviving an email link, unverified Google addresses; 242 backend tests pass
+2026-11-06 20:49 | fullstack-dev | Optimize apply: O-7 one shared review poll, O-9 keys left out of the poll and deleted rows filtered in SQL (records kept in the poll), O-12 decideReview in one transaction with a status-guarded update; 258 backend tests pass

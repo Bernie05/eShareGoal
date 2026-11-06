@@ -14,18 +14,24 @@ import { NativeSelect } from "@/components/ui/native-select";
 import { Textarea } from "@/components/ui/textarea";
 import { PageHeader, SectionTitle } from "@/components/app/primitives";
 import { useCreatedGoals, useSaveCreatedGoals, writeCookie } from "@/components/app/view-as";
-import { MAX_CREATED_GOALS, type GoalScope } from "@/lib/created-goals";
-import { GOAL_REQUESTS_COOKIE, MAX_GOAL_REQUESTS, type GoalRequest } from "@/lib/goal-requests";
+import { type GoalScope } from "@/lib/created-goals";
+import { type GoalRequest } from "@/lib/goal-requests";
 import { DashboardPreview, templateIcon } from "@/components/app/dashboard-preview";
 import { availableIn, isReadyMade, modeOf, type FieldKind, type Template, type TemplateField } from "@/lib/goal-templates";
 import { cn } from "@/lib/utils";
+import { BASE_PATH, GOAL_REQUESTS_COOKIE, MAX_CREATED_GOALS, MAX_GOAL_REQUESTS } from "@/lib/constants";
 
 const newGoalId = (name: string) => `goal-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40) || "goal"}-${Date.now().toString(36).slice(-4)}`;
 const newRequestId = () => `GR-${Date.now().toString(36).slice(-6)}`;
 const inputType: Record<FieldKind, string> = { money: "text", number: "number", date: "date", text: "text" };
 const requestTone = { Open: "Waiting for the System Admin", Built: "Ready", Rejected: "Rejected" } as const;
 
-function TemplateOption({ t, checked, onPick }: { t: Template; checked: boolean; onPick: () => void }) {
+interface TemplateOptionProps {
+  t: Template;
+  checked: boolean;
+  onPick: () => void;
+}
+function TemplateOption({ t, checked, onPick }: TemplateOptionProps) {
   const Icon = templateIcon[t.icon];
   const locked = t.fields.filter((f) => modeOf(f) === "locked");
   return (
@@ -40,9 +46,15 @@ function TemplateOption({ t, checked, onPick }: { t: Template; checked: boolean;
   );
 }
 
+interface NewGoalFormProps {
+  templates: Template[];
+  groups: { id: string; name: string; members: string[] }[];
+  defaultGroup?: string;
+  requests: GoalRequest[];
+}
 // ---------- Create goal (Owner): pick a group, then a ready-made goal or a template, fill what is left, see the dashboard it gets ----------
 // requests: this Owner's "Request a goal type" requests, so they can see what happened to them.
-export function NewGoalForm({ templates, groups, defaultGroup, requests: initialRequests }: { templates: Template[]; groups: { id: string; name: string; members: string[] }[]; defaultGroup?: string; requests: GoalRequest[] }) {
+export function NewGoalForm({ templates, groups, defaultGroup, requests: initialRequests }: NewGoalFormProps) {
   const goals = useCreatedGoals();
   const save = useSaveCreatedGoals();
   const [groupId, setGroupId] = useState(defaultGroup ?? groups[0]?.id ?? "");
@@ -134,7 +146,7 @@ export function NewGoalForm({ templates, groups, defaultGroup, requests: initial
       template: { name: t.name, icon: t.icon, measure: t.measure, fields: t.fields.map(({ label, kind, required, mode }) => ({ label, kind, required, ...(mode === "locked" ? { mode } : {}) })), widgets: t.widgets },
       values: Object.fromEntries(t.fields.map((f) => [f.label, valueOf(f)]).filter(([, v]) => v)),
       scope, participants: scope === "each" && chosen.length < members.length ? chosen : undefined,
-    }], `/design-preview/my-goal?goal=${id}`);
+    }], `${BASE_PATH}/my-goal?goal=${id}`);
     toast.success(`${name} created`, { description: scope === "each" ? `One goal for each of ${chosen.length} members` : `One shared goal for ${group?.name}` });
   };
   return (

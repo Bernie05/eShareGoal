@@ -1,0 +1,6 @@
+{
+  "crons": [
+    { "path": "/api/jobs/gmail-import", "schedule": "0 16 * * *" },
+    { "path": "/api/jobs/overdue", "schedule": "5 16 * * *" }
+  ]
+}

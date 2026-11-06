@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState, type ReactNode } from "react";
-import { toast } from "sonner";
+import { signUpAction } from "@/app/actions/auth";
 import { CircleCheck, Clock, Info, MailCheck, ShieldCheck, Target } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils";
 
 const ID_TYPES = ["PhilSys National ID", "Driver's License", "Passport", "UMID", "Postal ID"];
 import { TODAY } from "@/lib/demo-data";
+import { SIGN_IN_PATH } from "@/lib/constants";
 const blank = { name: "", email: "", phone: "", password: "", confirm: "", birthdate: "", address: "", idType: "", idNumber: "", idExpiry: "", front: "", back: "", selfie: "", consent: false };
 type Form = typeof blank;
 type Errors = Partial<Record<keyof Form, string>>;
@@ -43,7 +44,14 @@ function check(step: 1 | 2, f: Form): Errors {
   return e;
 }
 
-function Field({ id, label, hint, error, children }: { id: string; label: string; hint?: string; error?: string; children: ReactNode }) {
+interface FieldProps {
+  id: string;
+  label: string;
+  hint?: string;
+  error?: string;
+  children: ReactNode;
+}
+function Field({ id, label, hint, error, children }: FieldProps) {
   return (
     <div className="space-y-1.5">
       <Label htmlFor={id}>{label}</Label>
@@ -53,8 +61,11 @@ function Field({ id, label, hint, error, children }: { id: string; label: string
   );
 }
 
+interface SignupFormProps {
+  emailMode: EmailMode;
+}
 // ---------- Sign-up: account, then a valid ID; the account waits for System Admin review ----------
-export function SignupForm({ emailMode }: { emailMode: EmailMode }) {
+export function SignupForm({ emailMode }: SignupFormProps) {
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [f, setF] = useState<Form>(blank);
   const [errors, setErrors] = useState<Errors>({});
@@ -67,12 +78,15 @@ export function SignupForm({ emailMode }: { emailMode: EmailMode }) {
     setErrors(e);
     if (Object.keys(e).length) { document.getElementById(`su-${Object.keys(e)[0]}`)?.focus(); return; }
     if (step === 1) return setStep(2);
+    void submit();
+  };
+  const submit = async () => {
     setBusy(true);
-    setTimeout(() => { // simulated upload and save
-      setBusy(false); setStep(3);
-      if (emailMode === "prod") toast.success(`Email sent to ${f.email}`, { description: "\"We received your sign-up\" · through the email provider" });
-      else toast(`Development: email not sent`, { description: `Would send "We received your sign-up" to ${f.email}` });
-    }, 900);
+    const res = await signUpAction({ name: f.name, email: f.email, phone: f.phone.replace(/[\s-]/g, ""), password: f.password }).catch(() => null);
+    setBusy(false);
+    if (res?.ok) return setStep(3);
+    setErrors({ email: res?.error ?? "Could not reach the server. Try again." });
+    setStep(1); // every server check is on the first step, and the email is what usually needs changing
   };
 
   const file = (k: "front" | "back" | "selfie", label: string, hint: string) => (
@@ -83,7 +97,7 @@ export function SignupForm({ emailMode }: { emailMode: EmailMode }) {
 
   return (
     <main className="mx-auto flex w-full max-w-xl flex-1 flex-col gap-6 px-4 py-10">
-      <Link href="/design-preview" className="flex items-center gap-2 self-start">
+      <Link href={SIGN_IN_PATH} className="flex items-center gap-2 self-start">
         <span className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground"><Target className="size-4" aria-hidden /></span>
         <span className="text-base font-semibold tracking-tight">eShareGoal</span>
       </Link>
@@ -108,6 +122,7 @@ export function SignupForm({ emailMode }: { emailMode: EmailMode }) {
               <Field id="su-confirm" label="Confirm password" error={errors.confirm}><Input id="su-confirm" type="password" autoComplete="new-password" value={f.confirm} onChange={(e) => set({ confirm: e.target.value })} {...a11y("confirm")} /></Field>
             </div>
             <Button className="w-full" onClick={next}>Continue</Button>
+            <p className="text-center text-sm text-muted-foreground">Already have an account? <Link href={SIGN_IN_PATH} className="text-primary underline underline-offset-3">Sign in</Link></p>
           </CardContent>
         </Card>
       )}
@@ -151,7 +166,7 @@ export function SignupForm({ emailMode }: { emailMode: EmailMode }) {
             {emailMode === "dev" && (
               <Alert className="text-left"><Info aria-hidden /><AlertTitle>Development mode</AlertTitle><AlertDescription>No email was actually sent. A System Admin can switch to production in Settings, Email delivery.</AlertDescription></Alert>
             )}
-            <Link href="/design-preview/users" className="text-sm text-primary underline underline-offset-3">See it as the System Admin (Users)</Link>
+            <Link href={SIGN_IN_PATH} className="text-sm text-primary underline underline-offset-3">Back to sign in</Link>
           </CardContent>
         </Card>
       )}

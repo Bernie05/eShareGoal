@@ -8,15 +8,23 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Textarea } from "@/components/ui/textarea";
-import { MAX_PROOF_UPLOAD, newRecordId, newSubmissionId, PAYMENT_METHODS, shrinkImage, useGoalRecords, useGoalSubmissions, writeRecords, writeSubmissions, type Submission, type TxPatch } from "@/components/app/records";
+import { newRecordId, newSubmissionId, PAYMENT_METHODS, shrinkImage, useGoalRecords, useGoalSubmissions, writeRecords, writeSubmissions, type Submission, type TxPatch } from "@/components/app/records";
 import { peso } from "@/lib/money";
 import { FilePicker } from "@/components/app/file-picker";
 import { useMe } from "@/components/app/view-as";
 import { members, TODAY, type Tx, type TxType } from "@/lib/demo-data";
+import { MAX_PROOF_UPLOAD } from "@/lib/constants";
 
 type Errors = Partial<Record<"member" | "amount" | "date" | "proof", string>>;
 
-function Field({ id, label, error, hint, children }: { id: string; label: string; error?: string; hint?: string; children: React.ReactNode }) {
+interface FieldProps {
+  id: string;
+  label: string;
+  error?: string;
+  hint?: string;
+  children: React.ReactNode;
+}
+function Field({ id, label, error, hint, children }: FieldProps) {
   return (
     <div className="space-y-1.5">
       <Label htmlFor={id}>{label}</Label>
@@ -26,8 +34,13 @@ function Field({ id, label, error, hint, children }: { id: string; label: string
   );
 }
 
+interface ValidateInput {
+  member: string;
+  amount: string;
+  date: string;
+}
 // Validation mirrors what the server will enforce: member required, amount > 0 (max 2 decimals), date not in the future.
-export function validate(v: { member: string; amount: string; date: string }): Errors {
+export function validate(v: ValidateInput): Errors {
   const e: Errors = {};
   if (!v.member) e.member = "Choose who made this transaction.";
   const n = Number(v.amount);
@@ -38,11 +51,19 @@ export function validate(v: { member: string; amount: string; date: string }): E
   return e;
 }
 
+interface TransactionFormProps {
+  showErrors?: boolean;
+  goalId?: string;
+  submit?: boolean;
+  memberId?: string;
+  edit?: { tx: Tx; save: (p: TxPatch) => boolean };
+  onDone?: () => void;
+}
 // goalId: where the transaction is saved. The Owner's is a confirmed record right away (it shows in Transactions).
 // submit: a Member's instead. It is always theirs, needs a receipt image, and waits for the Owner to approve it.
 // memberId: who it is for when the Owner opens the form from a member's row.
 // edit: the Owner correcting an existing transaction; the form starts from it and save replaces it.
-export function TransactionForm({ showErrors = false, goalId, submit = false, memberId, edit, onDone }: { showErrors?: boolean; goalId?: string; submit?: boolean; memberId?: string; edit?: { tx: Tx; save: (p: TxPatch) => boolean }; onDone?: () => void }) {
+export function TransactionForm({ showErrors = false, goalId, submit = false, memberId, edit, onDone }: TransactionFormProps) {
   const subs = useGoalSubmissions(goalId ?? "");
   const records = useGoalRecords(goalId ?? "");
   const myName = useMe();

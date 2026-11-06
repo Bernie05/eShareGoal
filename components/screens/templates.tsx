@@ -18,9 +18,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { PageHeader, SectionTitle } from "@/components/app/primitives";
 import { DashboardPreview, templateIcon } from "@/components/app/dashboard-preview";
 import { useSendEmail, writeCookie } from "@/components/app/view-as";
-import { isReadyMade, MAX_TEMPLATES, modeOf, RETIRED_COOKIE, TEMPLATES_COOKIE, WIDGETS, type FieldKind, type FieldMode, type IconKey, type Measure, type Template, type TemplateScope, type WidgetId } from "@/lib/goal-templates";
-import { GOAL_REQUESTS_COOKIE, type GoalRequest } from "@/lib/goal-requests";
+import { isReadyMade, modeOf, WIDGETS, type FieldKind, type FieldMode, type IconKey, type Measure, type Template, type TemplateScope, type WidgetId } from "@/lib/goal-templates";
+import { type GoalRequest } from "@/lib/goal-requests";
 import { cn } from "@/lib/utils";
+import { GOAL_REQUESTS_COOKIE, MAX_TEMPLATES, RETIRED_COOKIE, TEMPLATES_COOKIE } from "@/lib/constants";
 
 const MEASURES: [Measure, string, string][] = [["money", "Money", "Pesos saved, paid or spent"], ["count", "A number", "Kilos, workouts, books, hours…"], ["checklist", "A checklist", "Tasks that get done"]];
 const KIND_LABEL: Record<FieldKind, string> = { money: "Amount (₱)", number: "Number", date: "Date", text: "Text" };
@@ -30,9 +31,16 @@ const inputType: Record<FieldKind, string> = { money: "text", number: "number", 
 const newId = (name: string) => `tpl-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 40)}-${Date.now().toString(36).slice(-4)}`;
 const blank = (): Template => ({ id: "", name: "", description: "", icon: "target", measure: "money", fields: [{ label: "Target amount", kind: "money", required: true }], widgets: ["stats", "progress", "monthly", "records"], status: "Draft" });
 
+interface TemplateCardProps {
+  t: Template;
+  uses: number;
+  onEdit?: () => void;
+  onActive: (on: boolean) => void;
+  onDelete?: () => void;
+}
 // The card's Active switch: on = Owners can pick it in Create goal; off = hidden ("Retired"; goals made from it keep working).
 // A draft is off until it is switched on, which publishes it.
-function TemplateCard({ t, uses, onEdit, onActive, onDelete }: { t: Template; uses: number; onEdit?: () => void; onActive: (on: boolean) => void; onDelete?: () => void }) {
+function TemplateCard({ t, uses, onEdit, onActive, onDelete }: TemplateCardProps) {
   const Icon = templateIcon[t.icon];
   const retired = t.status === "Retired";
   const active = t.status === "Published";
@@ -71,11 +79,12 @@ function TemplateCard({ t, uses, onEdit, onActive, onDelete }: { t: Template; us
   );
 }
 
+interface TemplatesScreenProps {
+  custom: Template[]; builtIns: Template[]; inUse: Record<string, number>; groups: { id: string; name: string }[]; requests: GoalRequest[]; request?: GoalRequest;
+}
 // ---------- Goal templates: System Admin only. Published templates show up in Create goal for group Owners ----------
 // inUse: template id -> number of goals made from it. request: a goal-type request to build a template from (from Reports).
-export function TemplatesScreen({ custom: initial, builtIns: initialBuiltIns, inUse, groups, requests, request }: {
-  custom: Template[]; builtIns: Template[]; inUse: Record<string, number>; groups: { id: string; name: string }[]; requests: GoalRequest[]; request?: GoalRequest;
-}) {
+export function TemplatesScreen({ custom: initial, builtIns: initialBuiltIns, inUse, groups, requests, request }: TemplatesScreenProps) {
   const router = useRouter();
   const send = useSendEmail();
   const [list, setList] = useState(initial);

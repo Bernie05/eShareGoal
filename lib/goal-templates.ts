@@ -1,3 +1,4 @@
+import { MAX_TEMPLATES } from "./constants";
 // Goal templates: what a group Owner picks in "Create goal". Built-in ones ship with the app; System Admins add more.
 // Each template says what users fill in and which dashboard sections a goal made from it shows.
 export type Measure = "money" | "count" | "checklist";
@@ -58,15 +59,12 @@ export const BUILT_IN: Template[] = [
 ];
 
 // Built-in templates cannot be edited, only retired (hidden from Create goal). Their ids are kept in a cookie.
-export const RETIRED_COOKIE = "esg-retired-templates";
 export function parseRetired(raw?: string): string[] {
   try { const l: unknown = JSON.parse(decodeURIComponent(raw ?? "[]")); return Array.isArray(l) ? l.filter((x): x is string => BUILT_IN.some((t) => t.id === x)) : []; } catch { return []; }
 }
 export const builtInsWith = (retired: string[]): Template[] => BUILT_IN.map((t) => (retired.includes(t.id) ? { ...t, status: "Retired" } : t));
 
 // Admin-made templates live in a cookie in the preview (no backend), so they are parsed defensively and capped.
-export const TEMPLATES_COOKIE = "esg-goal-templates";
-export const MAX_TEMPLATES = 6;
 const ICONS: IconKey[] = ["wallet", "landmark", "dumbbell", "list", "target", "plane", "home", "book"];
 const KINDS: FieldKind[] = ["money", "number", "date", "text"];
 const MODES: FieldMode[] = ["owner", "suggested", "locked"];
@@ -86,7 +84,7 @@ export function parseTemplates(raw?: string): Template[] {
         }),
         widgets: t.widgets.filter((w) => WIDGETS.some((x) => x.id === w && x.measures.includes(t.measure))),
         scope: t.scope === "single" || t.scope === "each" ? t.scope : undefined,
-        groups: Array.isArray(t.groups) ? t.groups.filter((g) => typeof g === "string" && /^(family|friends|my-[a-z0-9-]{1,60})$/.test(g)).slice(0, 10) : undefined,
+        groups: Array.isArray(t.groups) ? t.groups.filter((g) => typeof g === "string" && /^(family|my-[a-z0-9-]{1,60})$/.test(g)).slice(0, 10) : undefined,
       }));
   } catch { return []; }
 }

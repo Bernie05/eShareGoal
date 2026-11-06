@@ -11,14 +11,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Textarea } from "@/components/ui/textarea";
-import { PageHeader, StatusBadge } from "@/components/app/primitives";
+import { ActiveSwitch, PageHeader, SectionTitle } from "@/components/app/primitives";
 import { FilePicker } from "@/components/app/file-picker";
-import { MAX_PROOF_UPLOAD, shrinkImage } from "@/components/app/records";
+import { shrinkImage } from "@/components/app/records";
 import { saveEmailTemplates, useEmailTemplates } from "@/components/app/email-store";
 import { useSendEmail } from "@/components/app/view-as";
-import { MAX_BODY, MAX_EMAIL_TEMPLATES, MAX_IMAGES, PLACEHOLDERS, PURPOSES, renderEmail, unknownPlaceholders, type EmailTemplate } from "@/lib/email-templates";
+import { PLACEHOLDERS, PURPOSES, renderEmail, unknownPlaceholders, type EmailTemplate } from "@/lib/email-templates";
+import { BABYLYN_EMAIL } from "@/lib/constants";
 import { TODAY } from "@/lib/demo-data";
 import { cn } from "@/lib/utils";
+import { ADMIN_EMAIL, MAX_BODY, MAX_EMAIL_TEMPLATES, MAX_IMAGES, MAX_PROOF_UPLOAD } from "@/lib/constants";
 
 const purposeLabel = Object.fromEntries(PURPOSES) as Record<EmailTemplate["purpose"], string>;
 const newId = (name: string) => `et-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40) || "template"}-${Date.now().toString(36).slice(-4)}`;
@@ -31,14 +33,18 @@ const cidName = (file: string, taken: string[]) => {
   return name;
 };
 
+interface EmailPreviewProps {
+  t: Pick<EmailTemplate, "subject" | "format" | "body" | "images">;
+  className?: string;
+}
 /** The rendered email, as the member would see it. Admin HTML runs in a sandbox with no scripts. */
-export function EmailPreview({ t, className }: { t: Pick<EmailTemplate, "subject" | "format" | "body" | "images">; className?: string }) {
+export function EmailPreview({ t, className }: EmailPreviewProps) {
   const { subject, html } = renderEmail(t);
   return (
     <div className={cn("flex min-h-0 flex-col overflow-hidden rounded-lg border bg-white", className)}>
       <div className="border-b bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
         <p><span className="font-medium text-foreground">Subject:</span> {subject || <i>No subject</i>}</p>
-        <p>To: Babylyn &lt;babylyn@example.com&gt; · sample values</p>
+        <p>To: Babylyn &lt;{BABYLYN_EMAIL}&gt; · sample values</p>
         {t.format === "text" && t.images.length > 0 && <p>Attachments: {t.images.map((i) => i.name).join(", ")}</p>}
       </div>
       <iframe title="Email preview" sandbox="" srcDoc={`<!doctype html><meta charset="utf-8"><body style="margin:0;background:#fff">${html}</body>`} className="min-h-80 w-full flex-1 bg-white" />
@@ -46,7 +52,12 @@ export function EmailPreview({ t, className }: { t: Pick<EmailTemplate, "subject
   );
 }
 
-function Editor({ initial, all, onClose }: { initial: EmailTemplate; all: EmailTemplate[]; onClose: () => void }) {
+interface EditorProps {
+  initial: EmailTemplate;
+  all: EmailTemplate[];
+  onClose: () => void;
+}
+function Editor({ initial, all, onClose }: EditorProps) {
   const [t, setT] = useState(initial);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [adding, setAdding] = useState(false);
@@ -148,7 +159,7 @@ function Editor({ initial, all, onClose }: { initial: EmailTemplate; all: EmailT
           </div>
         </div>
         <DialogFooter className="sm:justify-between">
-          <Button variant="ghost" onClick={() => send("admin@example.com", renderEmail(t).subject || "(no subject)")}><Send aria-hidden /> Send me a test</Button>
+          <Button variant="ghost" onClick={() => send(ADMIN_EMAIL, renderEmail(t).subject || "(no subject)")}><Send aria-hidden /> Send me a test</Button>
           <span className="flex flex-wrap gap-2">
             <Button variant="outline" onClick={onClose}>Cancel</Button>
             <Button variant="outline" onClick={() => save("Draft")}>Save as draft</Button>
@@ -160,9 +171,12 @@ function Editor({ initial, all, onClose }: { initial: EmailTemplate; all: EmailT
   );
 }
 
+interface EmailTemplatesScreenProps {
+  inUse: Record<string, number>;
+}
 // ---------- System Admin: email templates the scheduled jobs send ----------
 // inUse: template id -> how many goals' jobs send it (read on the server from every group's setup).
-export function EmailTemplatesScreen({ inUse }: { inUse: Record<string, number> }) {
+export function EmailTemplatesScreen({ inUse }: EmailTemplatesScreenProps) {
   const all = useEmailTemplates();
   const [editing, setEditing] = useState<EmailTemplate | null>(null);
   const [viewing, setViewing] = useState<EmailTemplate | null>(null);
@@ -170,12 +184,14 @@ export function EmailTemplatesScreen({ inUse }: { inUse: Record<string, number> 
   const remove = (t: EmailTemplate) => { if (saveEmailTemplates(all.filter((x) => x.id !== t.id))) toast(`${t.name} deleted`); };
   const toggle = (t: EmailTemplate) => {
     if (!saveEmailTemplates(all.map((x) => (x.id === t.id ? { ...x, status: x.status === "Published" ? "Draft" : "Published", updated: TODAY } : x)))) return;
-    toast(t.status === "Published" ? `${t.name} unpublished` : `${t.name} published`);
+    toast(t.status === "Published" ? `${t.name} is not active` : `${t.name} is active`, { description: t.status === "Published" ? "Hidden from Owners." : "Owners can pick it for their jobs." });
   };
+  const active = all.filter((t) => t.status === "Published").length;
   return (
     <>
-      <PageHeader title="Email templates" description="The emails scheduled jobs send through Gmail. Owners pick one for each job in Group setup → Jobs; published templates only."
+      <PageHeader title="Email templates" description="The emails scheduled jobs send through Gmail. Owners pick one for each job in Group setup → Jobs; active templates only."
         actions={<Button disabled={custom >= MAX_EMAIL_TEMPLATES} title={custom >= MAX_EMAIL_TEMPLATES ? `Up to ${MAX_EMAIL_TEMPLATES} templates` : undefined} onClick={() => setEditing(blank())}><Plus aria-hidden /> New template</Button>} />
+      <SectionTitle aside={<span className="text-xs text-muted-foreground">{active} active · {all.length - active} not active</span>}>Templates</SectionTitle>
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {all.map((t) => {
           const uses = inUse[t.id] ?? 0;
@@ -187,19 +203,19 @@ export function EmailTemplatesScreen({ inUse }: { inUse: Record<string, number> 
                   <span className="flex flex-wrap justify-end gap-1.5">
                     <Badge variant="outline" className="font-mono text-[10px] uppercase">{t.format === "html" ? "HTML" : "Text"}</Badge>
                     {t.builtIn && <Badge variant="outline" className="text-muted-foreground">Built in</Badge>}
-                    <StatusBadge status={t.status === "Published" ? "Active" : "Paused"} />
                   </span>
                 </div>
                 <div className="min-w-0"><p className="font-medium">{t.name}</p><p className="truncate text-sm text-muted-foreground" title={t.subject}>{t.subject}</p></div>
                 <p className="text-xs text-muted-foreground">
                   For {purposeLabel[t.purpose].toLowerCase()} · {t.images.length ? `${t.images.length} ${t.images.length === 1 ? "image" : "images"}` : "no images"}
-                  <br />{t.status === "Draft" ? "Draft: Owners do not see it" : uses ? `Sent by ${uses} ${uses === 1 ? "job" : "jobs"}` : t.builtIn ? "Default for its job" : "Not picked by a job yet"}
+                  <br />{uses ? `Sent by ${uses} ${uses === 1 ? "job" : "jobs"}` : t.builtIn ? "Default for its job" : "Not picked by a job yet"}
                 </p>
+                <ActiveSwitch name={t.name} active={t.status === "Published"} onChange={() => toggle(t)} on="Owners can pick it for their jobs" off="Hidden from Owners"
+                  locked={t.builtIn ? "Built in: always active, the default for its job" : uses > 0 && t.status === "Published" ? "A job sends it: pick another template there first" : undefined} />
                 <div className="mt-auto flex flex-wrap gap-2">
                   <Button variant="outline" size="sm" onClick={() => setViewing(t)}><Eye aria-hidden /> Preview</Button>
                   {!t.builtIn && <Button variant="outline" size="sm" onClick={() => setEditing(t)}><Pencil aria-hidden /> Edit</Button>}
                   <Button variant="outline" size="sm" disabled={custom >= MAX_EMAIL_TEMPLATES} onClick={() => setEditing({ ...t, id: "", builtIn: false, name: `${t.name} (copy)`, status: "Draft" })}><Copy aria-hidden /> Duplicate</Button>
-                  {!t.builtIn && <Button variant="outline" size="sm" disabled={uses > 0 && t.status === "Published"} title={uses > 0 ? "A job sends it: pick another template there first" : undefined} onClick={() => toggle(t)}>{t.status === "Published" ? "Unpublish" : "Publish"}</Button>}
                   {!t.builtIn && <Button variant="ghost" size="sm" disabled={uses > 0} title={uses > 0 ? "A job sends it: pick another template there first" : undefined} onClick={() => remove(t)}><Trash2 aria-hidden /> Delete</Button>}
                 </div>
               </CardContent>

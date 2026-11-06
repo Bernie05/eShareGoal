@@ -7,7 +7,11 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 
 /** "Delete X?" with a red Delete. remove: does it; false when it could not be done (it shows its own error), which keeps the dialog open. */
 export type Deleting = { name: string; note: string; remove: () => boolean };
-export function ConfirmDelete({ item, onClose }: { item: Deleting; onClose: () => void }) {
+interface ConfirmDeleteProps {
+  item: Deleting;
+  onClose: () => void;
+}
+export function ConfirmDelete({ item, onClose }: ConfirmDeleteProps) {
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent>

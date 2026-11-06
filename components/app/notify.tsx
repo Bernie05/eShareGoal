@@ -12,15 +12,20 @@ import { sendNudges, useNudges } from "./nudges";
 import { useMe, useSendEmail } from "./view-as";
 import type { Due } from "./dues";
 import { fmtDate, peso } from "@/lib/money";
+import { LOCALE, MAX_MESSAGE } from "@/lib/constants";
 
-const MAX_MESSAGE = 300;
-const monthLong = (m: string) => new Date(m + "-01T00:00:00Z").toLocaleDateString("en-PH", { month: "long", timeZone: "UTC" });
+const monthLong = (m: string) => new Date(m + "-01T00:00:00Z").toLocaleDateString(LOCALE, { month: "long", timeZone: "UTC" });
 
+interface NotifyMembersProps {
+  dues: Due[];
+  month: string;
+  only?: string;
+}
 /**
  * Owner only: notify members now, instead of waiting for the automatic reminder.
  * `dues`: everyone's share for `month`; `only`: open it for one member (the row's Notify button).
  */
-export function NotifyMembers({ dues: everyone, month, only }: { dues: Due[]; month: string; only?: string }) {
+export function NotifyMembers({ dues: everyone, month, only }: NotifyMembersProps) {
   const me = useMe() ?? "Owner";
   const dues = everyone.filter((d) => d.name !== me); // the Owner does not remind themself
   const send = useSendEmail();
@@ -88,9 +93,13 @@ export function NotifyMembers({ dues: everyone, month, only }: { dues: Due[]; mo
   );
 }
 
+interface LastRemindedProps {
+  name: string;
+  month: string;
+}
 /** "Reminded Oct 25" under a member's status: the last reminder sent by hand for this share. */
-export function LastReminded({ name, month }: { name: string; month: string }) {
+export function LastReminded({ name, month }: LastRemindedProps) {
   const last = useNudges().find((n) => n.to === name && n.month === month);
   if (!last) return null;
-  return <span className="mt-0.5 block text-xs text-muted-foreground">Reminded {new Date(last.sent).toLocaleString("en-PH", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })} by {last.from}</span>;
+  return <span className="mt-0.5 block text-xs text-muted-foreground">Reminded {new Date(last.sent).toLocaleString(LOCALE, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })} by {last.from}</span>;
 }

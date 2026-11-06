@@ -1,5 +1,6 @@
+import { CURRENCY, LOCALE } from "./constants";
 // All money is integer centavos (PHP). Never floats.
-const fmt = new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" });
+const fmt = new Intl.NumberFormat(LOCALE, { style: "currency", currency: CURRENCY });
 export const peso = (centavos: number) => fmt.format(centavos / 100);
 
 /** Fixed schedule: monthly amortization x term. Remaining = what is still owed per the schedule. */
@@ -16,4 +17,4 @@ export function addMonths(iso: string, n: number) {
 }
 
 export const fmtDate = (iso: string) =>
-  new Date(iso + "T00:00:00Z").toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
+  new Date(iso + "T00:00:00Z").toLocaleDateString(LOCALE, { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });

@@ -18,6 +18,8 @@ import { groups } from "@/lib/demo-data";
 import type { CreatedGoal } from "@/lib/created-goals";
 import { fmtDate, peso } from "@/lib/money";
 import { cn } from "@/lib/utils";
+import { BASE_PATH, CAR_CREDIT, LOCALE } from "@/lib/constants";
+import { ReviewList, useReviewQueue } from "./import-review";
 
 // Members submit transactions with a receipt; the group Owner approves or rejects them. This works the same for
 // goals made from a template and for the sample goals (Car Credit, Emergency Fund...), so every place that shows
@@ -29,7 +31,7 @@ export type ApprovalGoal = {
 };
 
 export const approvalGoalOf = (g: CreatedGoal, groupName: string): ApprovalGoal => ({
-  id: g.id, name: g.name, groupId: g.groupId, groupName, href: `/design-preview/my-goal?goal=${g.id}`,
+  id: g.id, name: g.name, groupId: g.groupId, groupName, href: `${BASE_PATH}/my-goal?goal=${g.id}`,
   measure: g.template.measure === "count" ? "count" : "money", unit: g.values["Unit"] ?? g.values["Unit (kg, workouts…)"],
 });
 
@@ -38,11 +40,11 @@ export const sampleApprovalGoals = (groupId?: string): ApprovalGoal[] =>
   groups.filter((gr) => !gr.archived && (!groupId || gr.id === groupId)).flatMap((gr) => gr.goals
     .filter((x) => x.type === "loan" || x.type === "shared_money")
     .map((x) => ({ id: x.id, name: x.name, groupId: gr.id, groupName: gr.name, measure: "money" as const, sample: true,
-      href: x.type === "loan" ? "/design-preview/loan" : `/design-preview/shared-money?goal=${x.id}` })));
+      href: `${BASE_PATH}/loan` })));
 
-export const fmtSubmitted = (iso: string) => new Date(iso).toLocaleString("en-PH", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+export const fmtSubmitted = (iso: string) => new Date(iso).toLocaleString(LOCALE, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 export const subAmount = (goal: ApprovalGoal, s: Pick<Submission, "amount" | "direction">) =>
-  goal.measure === "money" ? `${s.direction === "out" ? "-" : "+"}${peso(s.amount)}` : `${s.amount.toLocaleString("en-PH")}${goal.unit ? ` ${goal.unit}` : ""}`;
+  goal.measure === "money" ? `${s.direction === "out" ? "-" : "+"}${peso(s.amount)}` : `${s.amount.toLocaleString(LOCALE)}${goal.unit ? ` ${goal.unit}` : ""}`;
 const amountTone = (goal: ApprovalGoal, s: Submission) => goal.measure === "money" && (s.direction === "out" ? toneText.danger : toneText.success);
 export const TX_KIND = { deposit: "Deposit", loan_payment: "Loan payment", expense: "Expense", withdrawal: "Withdrawal" } as const;
 /** Reference and note in one line, for lists. */
@@ -56,8 +58,13 @@ export function usePending(goals: ApprovalGoal[]): Pending[] {
   return goals.flatMap((goal) => pendingOf(byGoal[goal.id] ?? []).map((s) => ({ goal, s }))).sort((a, b) => a.s.submitted.localeCompare(b.s.submitted));
 }
 
+interface ReviewDialogProps {
+  goal: ApprovalGoal;
+  id: string;
+  onClose: () => void;
+}
 // ---------- The Owner checks the receipt, then approves (adds the record) or rejects it ----------
-export function ReviewDialog({ goal, id, onClose }: { goal: ApprovalGoal; id: string; onClose: () => void }) {
+export function ReviewDialog({ goal, id, onClose }: ReviewDialogProps) {
   const me = useMe();
   const records = useGoalRecords(goal.id);
   const subs = useGoalSubmissions(goal.id);
@@ -78,7 +85,7 @@ export function ReviewDialog({ goal, id, onClose }: { goal: ApprovalGoal; id: st
       const rec: GoalRecord = { id: newRecordId(), member: now.member, date: now.date, note: now.note, amount: now.amount, direction: now.direction, proofOf: now.id, kind: now.kind, method: now.method, ref: now.ref };
       if (!writeRecords(goal.id, [rec, ...records])) return blocked();
       if (!writeSubmissions(goal.id, subs.map((x) => (x.id === id ? { ...decided, recordId: rec.id } : x)))) { writeRecords(goal.id, records); return blocked(); } // undo, so the record is never added twice
-      if (goal.sample && goal.id !== "car-credit") toast.success(`Approved · ${subAmount(goal, now)} from ${now.member}`, { description: "Sample goal: its totals are fixed demo numbers, so they do not change." });
+      if (goal.sample && goal.id !== CAR_CREDIT) toast.success(`Approved · ${subAmount(goal, now)} from ${now.member}`, { description: "Sample goal: its totals are fixed demo numbers, so they do not change." });
       else toast.success(`Approved · ${subAmount(goal, now)} from ${now.member} added`);
     } else {
       if (!writeSubmissions(goal.id, subs.map((x) => (x.id === id ? decided : x)))) return blocked();
@@ -118,10 +125,18 @@ export function ReviewDialog({ goal, id, onClose }: { goal: ApprovalGoal; id: st
   );
 }
 
-const Count = ({ n }: { n: number }) => n > 0 ? <span className="num min-w-5 rounded-full bg-destructive px-1.5 text-center text-xs leading-5 text-white" aria-hidden>{n}</span> : null;
+interface CountProps {
+  n: number;
+}
+const Count = ({ n }: CountProps) => n > 0 ? <span className="num min-w-5 rounded-full bg-destructive px-1.5 text-center text-xs leading-5 text-white" aria-hidden>{n}</span> : null;
 
+interface PendingTableProps {
+  rows: Pending[];
+  showGoal: boolean;
+  onReview: (p: Pending) => void;
+}
 /** Table of submissions waiting for approval. With several goals it also says which goal each one is for. */
-function PendingTable({ rows, showGoal, onReview }: { rows: Pending[]; showGoal: boolean; onReview: (p: Pending) => void }) {
+function PendingTable({ rows, showGoal, onReview }: PendingTableProps) {
   const owner = useViewAs() === "owner";
   if (!rows.length) return <p className="rounded-lg border border-dashed px-3 py-6 text-center text-sm text-muted-foreground">No pending approvals. Members&apos; new submissions show up here.</p>;
   return (
@@ -144,16 +159,24 @@ function PendingTable({ rows, showGoal, onReview }: { rows: Pending[]; showGoal:
   );
 }
 
+interface ApprovalsProps {
+  goals: ApprovalGoal[];
+  title?: string;
+  variant?: "button" | "bell" | "chip";
+  footer?: ReactNode;
+  /** More to approve beside the submissions: how many, and the list. */
+  extra?: { n: number; body: ReactNode };
+}
 /**
  * A trigger with the number of submissions waiting, which opens the pending table; Review opens one receipt.
  * The table steps aside while a submission is reviewed and comes back after it is approved or rejected.
  * variant "button": the goal page; "bell": the header notification; "chip": one goal's row on the group page.
  */
-export function Approvals({ goals, title = "Pending approval", variant = "button", footer }: { goals: ApprovalGoal[]; title?: string; variant?: "button" | "bell" | "chip"; footer?: ReactNode }) {
+export function Approvals({ goals, title = "Pending approval", variant = "button", footer, extra }: ApprovalsProps) {
   const rows = usePending(goals);
   const [open, setOpen] = useState(false);
   const [reviewing, setReviewing] = useState<Pending | null>(null);
-  const n = rows.length;
+  const n = rows.length + (extra?.n ?? 0);
   const label = n ? `${title}, ${n} waiting` : `${title}, none waiting`;
   const many = new Set(goals.map((g) => g.id)).size > 1;
   const trigger: ReactNode =
@@ -164,9 +187,10 @@ export function Approvals({ goals, title = "Pending approval", variant = "button
     <>
       {trigger}
       <Dialog open={open && !reviewing} onOpenChange={(o) => !o && setOpen(false)}>
-        <DialogContent className="sm:max-w-4xl">
+        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-4xl">
           <DialogHeader><DialogTitle>{title}</DialogTitle><DialogDescription>{many ? `${goals.length} goals you own` : goals[0]?.name} · {n ? `${n} ${n === 1 ? "transaction is" : "transactions are"} waiting. Nothing counts until it is approved.` : "Nothing is waiting."}</DialogDescription></DialogHeader>
-          <PendingTable rows={rows} showGoal={many} onReview={setReviewing} />
+          {(rows.length > 0 || !extra?.n) && <PendingTable rows={rows} showGoal={many} onReview={setReviewing} />}
+          {!!extra?.n && extra.body}
           <DialogFooter>{footer}<Button variant="outline" onClick={() => setOpen(false)}>Close</Button></DialogFooter>
         </DialogContent>
       </Dialog>
@@ -175,8 +199,11 @@ export function Approvals({ goals, title = "Pending approval", variant = "button
   );
 }
 
+interface GroupApprovalsProps {
+  goals: ApprovalGoal[];
+}
 /** Group page section: every goal that takes transactions, with a button showing how many requests wait on it. */
-export function GroupApprovals({ goals }: { goals: ApprovalGoal[] }) {
+export function GroupApprovals({ goals }: GroupApprovalsProps) {
   const total = usePending(goals).length;
   if (!goals.length) return null;
   return (
@@ -200,15 +227,21 @@ export function GroupApprovals({ goals }: { goals: ApprovalGoal[] }) {
 
 // ---------- Wrappers for server-rendered pages and the header (they pick the goals and the role themselves) ----------
 
+interface SampleApprovalsProps {
+  goalId: string;
+}
 /** Approvals button on a sample goal page, for its Owner (and the System Admin, read-only). */
-export function SampleApprovals({ goalId }: { goalId: string }) {
+export function SampleApprovals({ goalId }: SampleApprovalsProps) {
   const role = useViewAs();
   const goal = sampleApprovalGoals().find((g) => g.id === goalId);
   return goal && role !== "member" ? <Approvals goals={[goal]} /> : null;
 }
 
+interface SampleMySubmissionsProps {
+  goalId: string;
+}
 /** A Member's submissions on a sample goal page. */
-export function SampleMySubmissions({ goalId }: { goalId: string }) {
+export function SampleMySubmissions({ goalId }: SampleMySubmissionsProps) {
   const role = useViewAs();
   const me = useMe();
   const goal = sampleApprovalGoals().find((g) => g.id === goalId);
@@ -221,8 +254,12 @@ function useGroupApprovalGoals(groupId: string, groupName: string) {
   return [...sampleApprovalGoals(groupId), ...created];
 }
 
+interface GroupApprovalsForProps {
+  groupId: string;
+  groupName: string;
+}
 /** The group page's Pending approvals section. Members do not see it. */
-export function GroupApprovalsFor({ groupId, groupName }: { groupId: string; groupName: string }) {
+export function GroupApprovalsFor({ groupId, groupName }: GroupApprovalsForProps) {
   const goals = useGroupApprovalGoals(groupId, groupName);
   return useViewAs() === "member" ? null : <GroupApprovals goals={goals} />;
 }
@@ -230,6 +267,7 @@ export function GroupApprovalsFor({ groupId, groupName }: { groupId: string; gro
 /** Header notification bell: everything waiting in every group this account owns. */
 export function ApprovalsBell() {
   const account = useAccount();
+  const { pending } = useReviewQueue();
   const createdGroups = useCreatedGroups();
   const createdGoals = useCreatedGoals();
   const groupName = (id: string) => [...groups, ...createdGroups].find((g) => g.id === id)?.name ?? "Group";
@@ -238,11 +276,15 @@ export function ApprovalsBell() {
     ...sampleApprovalGoals().filter((g) => owns(g.groupId)),
     ...createdGoals.filter((g) => owns(g.groupId) && g.template.measure !== "checklist").map((g) => approvalGoalOf(g, groupName(g.groupId))),
   ];
-  return <Approvals goals={goals} variant="bell" title="Pending approvals" footer={<Link href="/design-preview/notifications" className={buttonVariants({ variant: "ghost" })}>All notifications</Link>} />;
+  return <Approvals goals={goals} variant="bell" title="Pending approvals" extra={{ n: pending.length, body: <ReviewList items={pending} canReview /> }} footer={<Link href={`${BASE_PATH}/notifications`} className={buttonVariants({ variant: "ghost" })}>All notifications</Link>} />;
 }
 
+interface MySubmissionsCardProps {
+  goal: ApprovalGoal;
+  me: string | null;
+}
 /** A Member's own submissions on one goal, with the Owner's decision. */
-export function MySubmissionsCard({ goal, me }: { goal: ApprovalGoal; me: string | null }) {
+export function MySubmissionsCard({ goal, me }: MySubmissionsCardProps) {
   const subs = useGoalSubmissions(goal.id);
   const [viewing, setViewing] = useState<string | null>(null);
   const mine = subs.filter((s) => s.member === me);

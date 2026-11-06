@@ -10,6 +10,8 @@ import { NativeSelect } from "@/components/ui/native-select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { StatusBadge, toneText } from "@/components/app/primitives";
 import { useGoalRecords } from "@/components/app/records";
+import { useImported } from "@/components/app/imported-records";
+import { CAR_CREDIT, CAR_CREDIT_ENTRY } from "@/lib/constants";
 import { ReviewDialog, sampleApprovalGoals, TX_KIND } from "@/components/app/approvals";
 import { useMe } from "@/components/app/view-as";
 import { members, transactions, type TxStatus, type TxType } from "@/lib/demo-data";
@@ -24,9 +26,15 @@ const STATUS: Record<TxStatus, string> = { confirmed: "Confirmed", pending: "Pen
 const PAGE = 10;
 const blank = { q: "", member: "", type: "", status: "", source: "", from: "", to: "" };
 
+interface TransactionsTableProps {
+  goalId: string;
+  onlyMine?: boolean;
+}
 /** onlyMine: a Member's page (decided on the server) lists only their own rows. */
-export function TransactionsTable({ goalId, onlyMine = false }: { goalId: string; onlyMine?: boolean }) {
+export function TransactionsTable({ goalId, onlyMine = false }: TransactionsTableProps) {
   const approved = useGoalRecords(goalId);
+  const imported = useImported(goalId === CAR_CREDIT ? CAR_CREDIT_ENTRY : null).records;
+  const local = new Set(approved.map((r) => r.ref));
   const goal = sampleApprovalGoals().find((g) => g.id === goalId);
   const [f, setF] = useState(blank);
   const [page, setPage] = useState(0);
@@ -38,6 +46,7 @@ export function TransactionsTable({ goalId, onlyMine = false }: { goalId: string
       id: r.id, date: r.date, member: r.member, type: r.kind ?? (r.direction === "out" ? "expense" : "deposit"), method: r.method ?? "-", ref: r.ref,
       source: r.proofOf ? "submission" : "manual", status: "confirmed", amount: r.amount, note: r.note, proofOf: r.proofOf,
     })),
+    ...imported.filter((r) => !local.has(r.ref)).map((r): Row => ({ id: r.id, date: r.date, member: r.member, type: r.kind, method: r.method, ref: r.ref, source: "imported", status: "confirmed", amount: r.amount, note: r.note })),
     ...transactions.map((t): Row => ({ id: t.id, date: t.date, member: members.find((m) => m.id === t.memberId)?.name ?? "-", type: t.type, method: t.method, ref: t.ref, source: t.source, status: t.status, amount: t.amount, note: t.notes })),
   ].filter((r) => !onlyMine || r.member === me).sort((a, b) => b.date.localeCompare(a.date));
 

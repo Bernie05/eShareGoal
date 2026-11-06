@@ -1,8 +1,11 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
+import { reviewUserAction } from "@/app/actions/admin";
 import { useMemo, useState, type ReactNode } from "react";
-import { BadgeCheck, Ban, Camera, Check, ChevronLeft, ChevronRight, CircleAlert, CircleCheck, Crown, Eye, IdCard, RotateCcw, Search, ShieldAlert, X } from "lucide-react";
+import { BadgeCheck, Ban, Camera, Check, ChevronLeft, ChevronRight, CircleAlert, CircleCheck, CreditCard, Crown, Eye, IdCard, RotateCcw, Search, ShieldAlert, X } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -14,11 +17,15 @@ import { NativeSelect } from "@/components/ui/native-select";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { PageHeader, StatCard, StatusBadge, toneText } from "@/components/app/primitives";
+import { CardEditor, useUserCards } from "@/components/app/card-editor";
 import { RoleBadge, useEmailMode, useSendEmail } from "@/components/app/view-as";
 import { fmtDate } from "@/lib/money";
+import { cardLabel, cardsOf } from "@/lib/user-cards";
 import type { User, UserStatus } from "@/lib/users-data";
 import { cn } from "@/lib/utils";
+import { BASE_PATH } from "@/lib/constants";
 
 const PAGE = 10;
 const empty = { q: "", status: "", group: "", role: "" };
@@ -30,18 +37,94 @@ const roleBadge = (role: string) => (role === "Owner" ? "owner" : role === "View
 const REJECT_REASONS = ["ID is expired", "ID photo is unreadable", "Name does not match the ID", "Selfie does not match the ID", "Email not confirmed", "Other"];
 const REVOKE_REASONS = ["Repeated wrong or duplicate records", "Reported by a group Owner", "Suspicious activity", "User asked to close the account", "Other"];
 
-function Field({ label, children }: { label: string; children: ReactNode }) {
+interface FieldProps {
+  label: string;
+  children: ReactNode;
+}
+function Field({ label, children }: FieldProps) {
   return <div><dt className="text-xs text-muted-foreground">{label}</dt><dd className="font-medium">{children}</dd></div>;
 }
 
+interface IdImageProps {
+  label: string;
+  Icon: typeof IdCard;
+}
 // Placeholder for an uploaded image: the preview never shows real ID photos.
-const IdImage = ({ label, Icon }: { label: string; Icon: typeof IdCard }) => (
+const IdImage = ({ label, Icon }: IdImageProps) => (
   <div className="flex aspect-[3/2] flex-col items-center justify-center gap-1 rounded-lg border border-dashed bg-muted/40 text-xs text-muted-foreground"><Icon className="size-5" aria-hidden />{label}</div>
 );
 
+interface CardsCellProps {
+  last4s: string[];
+}
+/** A card icon and how many; hovering or focusing it lists them all, so the table stays narrow however many a person has. */
+function CardsCell({ last4s }: CardsCellProps) {
+  if (!last4s.length) return <span className="text-xs text-muted-foreground">None</span>;
+  return (
+    <Tooltip>
+      <TooltipTrigger render={<button type="button" aria-label={`${last4s.length} ${last4s.length === 1 ? "card" : "cards"}: ${last4s.join(", ")}`} className="flex items-center gap-1 rounded-md px-1 py-0.5 text-xs text-muted-foreground outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50" />}>
+        <CreditCard className="size-4" aria-hidden /><span className="num">{last4s.length}</span>
+      </TooltipTrigger>
+      <TooltipContent>
+        <div className="space-y-0.5">
+          <p className="font-medium">{last4s.length} {last4s.length === 1 ? "card" : "cards"}</p>
+          <ul className="num">{last4s.map((c) => <li key={c}>{cardLabel(c)}</li>)}</ul>
+        </div>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+type WaitingAccount = { id: string; name: string | null; email: string | null; createdAt: Date };
+interface WaitingAccountsProps {
+  rows: WaitingAccount[];
+}
+/** Real sign-ups from the database. Approving lets the person in at once; a rejection needs a reason, which they see. */
+function WaitingAccounts({ rows }: WaitingAccountsProps) {
+  const router = useRouter();
+  const [rejecting, setRejecting] = useState<string | null>(null);
+  const [why, setWhy] = useState("");
+  const [busy, setBusy] = useState(false);
+  const decide = async (id: string, approve: boolean) => {
+    setBusy(true);
+    const res = await reviewUserAction(id, approve, approve ? "" : why).catch(() => null);
+    setBusy(false);
+    if (!res?.ok) return void toast.error(res?.error ?? "Could not reach the server. Nothing changed; try again.");
+    toast.success(approve ? "Account approved. They can sign in now." : "Account rejected.");
+    setRejecting(null); setWhy("");
+    router.refresh();
+  };
+  if (!rows.length) return null;
+  return (
+    <Card className="border-warning/40"><CardContent className="space-y-3">
+      <div><h2 className="font-medium">New accounts waiting for approval</h2><p className="text-sm text-muted-foreground">Real sign-ups. They cannot use eShareGoal until you approve them.</p></div>
+      <ul className="divide-y">{rows.map((u) => (
+        <li key={u.id} className="space-y-2 py-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="min-w-0"><p className="font-medium">{u.name ?? "No name"}</p><p className="break-all text-xs text-muted-foreground">{u.email} · signed up {fmtDate(u.createdAt.toISOString().slice(0, 10))}</p></div>
+            <div className="flex gap-2">
+              <Button size="sm" disabled={busy} onClick={() => decide(u.id, true)}><Check aria-hidden /> Approve</Button>
+              <Button size="sm" variant="outline" disabled={busy} onClick={() => setRejecting(rejecting === u.id ? null : u.id)}><X aria-hidden /> Reject</Button>
+            </div>
+          </div>
+          {rejecting === u.id && <div className="flex flex-wrap items-end gap-2">
+            <div className="min-w-48 flex-1 space-y-1.5"><Label htmlFor={`why-${u.id}`}>Reason (they see this)</Label><Input id={`why-${u.id}`} value={why} onChange={(e) => setWhy(e.target.value)} /></div>
+            <Button size="sm" variant="destructive" disabled={busy || !why.trim()} onClick={() => decide(u.id, false)}>Reject account</Button>
+          </div>}
+        </li>
+      ))}</ul>
+    </CardContent></Card>
+  );
+}
+
+interface UsersScreenProps {
+  rows: Row[];
+  waiting?: WaitingAccount[];
+}
 // ---------- Users: System Admin only. Review sign-ups, revoke access, transfer group ownership ----------
-export function UsersScreen({ rows: initial }: { rows: Row[] }) {
+export function UsersScreen({ rows: initial, waiting = [] }: UsersScreenProps) {
   const [rows, setRows] = useState(initial);
+  const cards = useUserCards();
   const [f, setF] = useState(empty);
   const [page, setPage] = useState(0);
   const [openId, setOpenId] = useState<string | null>(null);
@@ -97,11 +180,11 @@ export function UsersScreen({ rows: initial }: { rows: Row[] }) {
   const groupOpts = [...new Set(rows.flatMap((r) => r.memberships.map((m) => m.group)))].filter((g) => g !== "All groups").sort();
   const hits = useMemo(() => rows.filter((r) => {
     const q = f.q.trim().toLowerCase();
-    return (!q || [r.name, r.email, r.verification?.fullName ?? ""].some((s) => s.toLowerCase().includes(q)))
+    return (!q || [r.name, r.email, r.verification?.fullName ?? "", ...cardsOf(cards, r.name)].some((s) => s.toLowerCase().includes(q)))
       && (!f.status || r.status === f.status)
       && (!f.group || (f.group === "none" ? r.memberships.length === 0 : r.memberships.some((m) => m.group === f.group)))
       && (!f.role || (f.role === "admin" ? r.site === "System Admin" : r.memberships.some((m) => m.role === f.role)));
-  }), [rows, f]);
+  }), [rows, f, cards]);
   const active = Object.values(f).filter(Boolean).length;
   const pages = Math.max(1, Math.ceil(hits.length / PAGE));
   const from = page * PAGE;
@@ -125,6 +208,7 @@ export function UsersScreen({ rows: initial }: { rows: Row[] }) {
   return (
     <>
       <PageHeader title="Users" description="Every account on eShareGoal. Review sign-ups, revoke access and move group ownership." actions={<Link href="/signup" className={buttonVariants({ variant: "outline" })}>Preview the sign-up form</Link>} />
+      <WaitingAccounts rows={waiting} />
       {pending > 0 && (
         <Alert>
           <ShieldAlert aria-hidden />
@@ -146,7 +230,7 @@ export function UsersScreen({ rows: initial }: { rows: Row[] }) {
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
           <div className="space-y-1.5 sm:col-span-2">
             <Label htmlFor="u-q">Search</Label>
-            <div className="relative"><Search className="absolute top-2 left-2.5 size-4 text-muted-foreground" aria-hidden /><Input id="u-q" value={f.q} onChange={(e) => set({ q: e.target.value })} placeholder="Name, legal name or email…" className="pl-8" /></div>
+            <div className="relative"><Search className="absolute top-2 left-2.5 size-4 text-muted-foreground" aria-hidden /><Input id="u-q" value={f.q} onChange={(e) => set({ q: e.target.value })} placeholder="Name, email or card last 4…" className="pl-8" /></div>
           </div>
           <div className="space-y-1.5"><Label htmlFor="u-status">Status</Label><NativeSelect id="u-status" value={f.status} onChange={(e) => set({ status: e.target.value })}><option value="">All statuses</option>{["Active", "Pending review", "Invited", "Revoked", "Rejected"].map((s) => <option key={s}>{s}</option>)}</NativeSelect></div>
           <div className="space-y-1.5"><Label htmlFor="u-group">Group</Label><NativeSelect id="u-group" value={f.group} onChange={(e) => set({ group: e.target.value })}><option value="">All groups</option>{groupOpts.map((g) => <option key={g}>{g}</option>)}<option value="none">No group</option></NativeSelect></div>
@@ -162,12 +246,13 @@ export function UsersScreen({ rows: initial }: { rows: Row[] }) {
         {hits.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">No users match these filters.</p> : <>
           <Table>
             <TableHeader><TableRow>
-              <TableHead>User</TableHead><TableHead>Groups and roles</TableHead><TableHead>Status</TableHead><TableHead>Joined</TableHead><TableHead>Last active</TableHead><TableHead className="text-right">Records</TableHead><TableHead><span className="sr-only">Details</span></TableHead>
+              <TableHead>User</TableHead><TableHead>Groups and roles</TableHead><TableHead>Cards</TableHead><TableHead>Status</TableHead><TableHead>Joined</TableHead><TableHead>Last active</TableHead><TableHead className="text-right">Records</TableHead><TableHead><span className="sr-only">Details</span></TableHead>
             </TableRow></TableHeader>
             <TableBody>{hits.slice(from, from + PAGE).map((r) => (
               <TableRow key={r.id} className={cn("cursor-pointer", r.status === "Pending review" && "bg-warning-soft/40", (r.status === "Revoked" || r.status === "Rejected") && "text-muted-foreground")} onClick={() => setOpenId(r.id)}>
                 <TableCell><p className="font-medium">{r.name}{r.site === "System Admin" && <RoleBadge role="admin" className="ml-2" />}</p><p className="text-xs text-muted-foreground">{r.email}</p></TableCell>
                 <TableCell><div className="flex flex-wrap gap-1">{r.memberships.length ? r.memberships.map((m) => <Badge key={m.group} variant="outline" className="font-normal">{m.group} · {m.role}</Badge>) : <span className="text-xs text-muted-foreground">No group yet</span>}</div></TableCell>
+                <TableCell><CardsCell last4s={cardsOf(cards, r.name)} /></TableCell>
                 <TableCell><StatusBadge status={r.status} /></TableCell>
                 <TableCell className="num">{fmtDate(r.joined)}</TableCell><TableCell>{r.lastActive}</TableCell>
                 <TableCell className="num text-right">{r.records}</TableCell>
@@ -240,6 +325,11 @@ export function UsersScreen({ rows: initial }: { rows: Row[] }) {
                 ) : <p className="text-muted-foreground">Not in any group.</p>}
               </section>
 
+              {open.site === "User" && <section className="space-y-2">
+                <h3 className="flex items-center gap-2 font-semibold"><CreditCard className="size-4" aria-hidden /> Transfer cards</h3>
+                <CardEditor user={open.name} admin onChange={(line) => update(open.id, (u) => log(u, `${line} by System Admin`))} />
+              </section>}
+
               <section className="space-y-2">
                 <h3 className="font-semibold">Account</h3>
                 <dl className="grid grid-cols-2 gap-x-4 gap-y-2">
@@ -248,7 +338,7 @@ export function UsersScreen({ rows: initial }: { rows: Row[] }) {
                   <Field label="Email">{open.verification?.emailVerified ? <span className="inline-flex items-center gap-1"><BadgeCheck className="size-4 text-success" aria-hidden />Confirmed</span> : "Not confirmed"}</Field>
                   <Field label="Records about them">{open.records}</Field>
                 </dl>
-                {open.records > 0 && <Link href="/design-preview/activity" className={buttonVariants({ variant: "outline", size: "sm" })}>Open Activity History</Link>}
+                {open.records > 0 && <Link href={`${BASE_PATH}/activity`} className={buttonVariants({ variant: "outline", size: "sm" })}>Open Activity History</Link>}
               </section>
 
               {open.history.length > 0 && (
